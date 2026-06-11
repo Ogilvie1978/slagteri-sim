@@ -339,20 +339,23 @@ export default function ProductionPage() {
                 <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
                   Hviler – ikke klar endnu ({resting.length})
                 </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {resting.map(a => (
-                    <div key={a.id} className="card opacity-70">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-stone-100 text-sm font-medium">{ANIMAL_LABELS[a.animal_category]}</span>
-                          <span className="text-stone-500 text-xs ml-2">{a.quantity} styk</span>
-                        </div>
-                        <span className="text-stone-400 text-sm">{a.actual_weight_kg.toFixed(0)} kg/styk</span>
+                <div className="space-y-2">
+                  {Object.entries(
+                    resting.reduce((acc, a) => {
+                      if (!acc[a.animal_category]) acc[a.animal_category] = { count: 0, totalKg: 0 };
+                      acc[a.animal_category].count += a.quantity;
+                      acc[a.animal_category].totalKg += a.actual_weight_kg * a.quantity;
+                      return acc;
+                    }, {} as Record<string, { count: number; totalKg: number }>)
+                  ).map(([cat, data]) => (
+                    <div key={cat} className="card opacity-70 flex items-center justify-between">
+                      <div>
+                        <span className="text-stone-100 text-sm font-medium">{ANIMAL_LABELS[cat]}</span>
+                        <span className="text-stone-500 text-xs ml-2">{data.count} styk</span>
                       </div>
-                      <div className="flex items-center gap-3 mt-2">
-                        <p className="text-xs text-blue-400">💤 Hviler – klar næste dag</p>
-                        {a.vet_checked && <span className="badge-green">Dyrlæge ✓</span>}
-                        {!a.vet_checked && <span className="badge-red">Afventer dyrlæge</span>}
+                      <div className="text-right">
+                        <p className="text-stone-400 text-sm">{Math.round(data.totalKg / data.count)} kg/styk</p>
+                        <p className="text-xs text-blue-400">💤 Klar næste dag</p>
                       </div>
                     </div>
                   ))}
@@ -443,15 +446,26 @@ export default function ProductionPage() {
                 <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
                   Afkøler – ikke klar endnu ({coolingCold.length})
                 </h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {coolingCold.map(item => (
-                    <div key={item.id} className="card opacity-70">
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SEUROP_COLORS[item.seurop_class]}`}>{item.seurop_class}</span>
-                        <span className="text-stone-400 text-sm">{item.carcass_weight_kg.toFixed(1)} kg</span>
+                <div className="space-y-2">
+                  {Object.entries(
+                    coolingCold.reduce((acc, item) => {
+                      const key = `${item.animal_category}-${item.seurop_class}`;
+                      if (!acc[key]) acc[key] = { animal_category: item.animal_category, seurop_class: item.seurop_class, count: 0, totalKg: 0 };
+                      acc[key].count++;
+                      acc[key].totalKg += item.carcass_weight_kg;
+                      return acc;
+                    }, {} as Record<string, { animal_category: string; seurop_class: string; count: number; totalKg: number }>)
+                  ).map(([key, data]) => (
+                    <div key={key} className="card opacity-70 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SEUROP_COLORS[data.seurop_class]}`}>{data.seurop_class}</span>
+                        <span className="text-stone-300 text-sm">{ANIMAL_LABELS[data.animal_category]}</span>
+                        <span className="text-stone-500 text-xs">{data.count} kroppe</span>
                       </div>
-                      <p className="text-xs text-stone-500 mt-1">{ANIMAL_LABELS[item.animal_category]}</p>
-                      <p className="text-xs text-blue-400 mt-1">❄️ Klar i morgen</p>
+                      <div className="text-right">
+                        <p className="text-stone-400 text-sm">{Math.round(data.totalKg)} kg</p>
+                        <p className="text-xs text-blue-400">❄️ Klar i morgen</p>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -461,42 +475,49 @@ export default function ProductionPage() {
             {readyCold.length > 0 && (
               <div>
                 <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
-                  Klar til behandling ({readyCold.length})
+                  Klar til behandling ({readyCold.length} kroppe)
                 </h2>
                 <div className="space-y-3">
-                  {readyCold.map(item => {
-                    const isSelected = selectedColdItem === item.id;
+                  {Object.entries(
+                    readyCold.reduce((acc, item) => {
+                      const key = `${item.animal_category}-${item.seurop_class}`;
+                      if (!acc[key]) acc[key] = { animal_category: item.animal_category, seurop_class: item.seurop_class, items: [], totalKg: 0, maxBonus: 0 };
+                      acc[key].items.push(item);
+                      acc[key].totalKg += item.carcass_weight_kg;
+                      acc[key].maxBonus = Math.max(acc[key].maxBonus, item.maturation_bonus_pct);
+                      return acc;
+                    }, {} as Record<string, { animal_category: string; seurop_class: string; items: typeof readyCold; totalKg: number; maxBonus: number }>)
+                  ).map(([key, group]) => {
+                    const isSelected = selectedColdItem === key;
                     return (
-                      <div key={item.id} className={`card transition-all ${isSelected ? "border-brand-500" : ""}`}>
+                      <div key={key} className={`card transition-all ${isSelected ? "border-brand-500" : ""}`}>
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SEUROP_COLORS[item.seurop_class]}`}>{item.seurop_class}</span>
-                            <span className="text-stone-100 text-sm">{ANIMAL_LABELS[item.animal_category]}</span>
-                            <span className="text-stone-500 text-xs">{item.carcass_weight_kg.toFixed(1)} kg</span>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SEUROP_COLORS[group.seurop_class]}`}>{group.seurop_class}</span>
+                            <span className="text-stone-100 text-sm">{ANIMAL_LABELS[group.animal_category]}</span>
+                            <span className="text-stone-500 text-xs">{group.items.length} kroppe · {Math.round(group.totalKg)} kg</span>
                           </div>
-                          {item.maturation_bonus_pct > 0 && (
-                            <span className="badge-yellow">+{item.maturation_bonus_pct}% modning</span>
-                          )}
+                          {group.maxBonus > 0 && <span className="badge-yellow">+{group.maxBonus}% modning</span>}
                         </div>
                         {isSelected ? (
                           <div className="space-y-2 pt-2 border-t border-stone-700">
-                            <button onClick={() => { setActiveSection("butchery"); setSelectedColdItem(item.id); }}
+                            <button onClick={async () => { for (const item of group.items) await butcherItem(item, 22.5); setSelectedColdItem(null); }}
                               className="btn-primary w-full py-2 text-sm">
-                              🔪 Send til udbening
+                              🔪 Udbén alle ({group.items.length} kroppe)
                             </button>
-                            <button onClick={() => sellAsQuarter(item, 22.5)} disabled={processing}
+                            <button onClick={async () => { for (const item of group.items) await sellAsQuarter(item, 22.5); setSelectedColdItem(null); }} disabled={processing}
                               className="btn-secondary w-full py-2 text-sm">
-                              📦 Sælg som 1/4 ({formatDKK(Math.round(item.carcass_weight_kg * 22.5))})
+                              📦 Sælg alle som 1/4 ({formatDKK(Math.round(group.totalKg * 22.5))})
                             </button>
-                            <button onClick={() => setMaturing(item.id)} disabled={processing || item.status === "maturing"}
+                            <button onClick={async () => { for (const item of group.items) await setMaturing(item.id); setSelectedColdItem(null); }} disabled={processing}
                               className="w-full py-2 text-sm bg-amber-950/30 border border-amber-800/50 text-amber-400 rounded-lg hover:bg-amber-950/50 transition-colors">
-                              ⏳ Lad hænge til modning
+                              ⏳ Lad alle hænge til modning
                             </button>
                             <button onClick={() => setSelectedColdItem(null)}
                               className="w-full text-xs text-stone-600 hover:text-stone-500 py-1">Annuller</button>
                           </div>
                         ) : (
-                          <button onClick={() => setSelectedColdItem(item.id)}
+                          <button onClick={() => setSelectedColdItem(key)}
                             className="btn-secondary w-full py-2 text-sm">
                             Vælg handling →
                           </button>
