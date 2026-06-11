@@ -30,6 +30,17 @@ export async function POST(request: Request) {
   const isLastDay = currentDayNum === 5 && !company.saturday_approved;
   const isSaturday = currentDayNum === 6;
 
+  // 0. Fix stable_current_animals baseret på faktisk antal
+  const { count: actualStableCount } = await admin
+    .from("stable_animals")
+    .select("*", { count: "exact", head: true })
+    .eq("company_id", company.id)
+    .in("status", ["resting", "ready"]);
+
+  await admin.from("companies")
+    .update({ stable_current_animals: actualStableCount || 0 })
+    .eq("id", company.id);
+
   // 1. Dyr der ankom FØR i dag er klar til slagtning
   const currentDayIdx = DAYS.indexOf(company.current_day || "Mandag");
   const arrivedDaysToMakeReady = DAYS.filter((_, i) => i !== currentDayIdx);
@@ -49,6 +60,66 @@ export async function POST(request: Request) {
     .update({ status: "ready", expires_at: expiresAt6 })
     .eq("company_id", company.id)
     .eq("status", "cooling");
+
+  // 1b. Slagt alle dyr der er i kø (slaughter_queue) – test mode
+  const slaughterQueue = company.slaughter_queue as any[] || [];
+  if (slaughterQueue.length > 0) {
+    const SEUROP_DIST: Record<string, {class:string;pct:number}[]> = {
+      young_bulls: [{class:"S",pct:5},{class:"E",pct:30},{class:"U",pct:40},{class:"R",pct:20},{class:"O",pct:5}],
+      heifers:     [{class:"E",pct:20},{class:"U",pct:35},{class:"R",pct:35},{class:"O",pct:10}],
+      steers:      [{class:"U",pct:20},{class:"R",pct:45},{class:"O",pct:30},{class:"P",pct:5}],
+      cows:        [{class:"R",pct:10},{class:"O",pct:45},{class:"P",pct:45}],
+      class_s:     [{class:"S",pct:100}],
+      class_e:     [{class:"E",pct:100}],
+      class_r:     [{class:"R",pct:100}],
+      light:       [{class:"E",pct:40},{class:"U",pct:40},{class:"R",pct:20}],
+      heavy:       [{class:"U",pct:30},{class:"R",pct:50},{class:"O",pct:20}],
+      broiler:     [{class:"A",pct:80},{class:"B",pct:20}],
+      hen:         [{class:"B",pct:60},{class:"C",pct:40}],
+    };
+
+    function pickSEUROP(category: string, stress: number): string {
+      const dist = SEUROP_DIST[category] || [{class:"R",pct:100}];
+      const shift = stress > 60 ? 1 : 0;
+      const rand = Math.random() * 100;
+      let cum = 0;
+      for (let i = 0; i < dist.length; i++) {
+        cum += dist[i].pct;
+        if (rand <= cum) return dist[Math.min(i + shift, dist.length - 1)].class;
+      }
+      return dist[dist.length - 1].class;
+    }
+
+    const expiresAt = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toISOString();
+    for (const animal of slaughterQueue) {
+      const seurop = pickSEUROP(animal.animal_category, animal.stress_level || 20);
+      const carcassKg = Math.round((animal.actual_weight_kg || 500) * 0.55 * 10) / 10;
+      await admin.from("cold_storage").insert({
+        company_id: company.id,
+        animal_category: animal.animal_category,
+        seurop_class: seurop,
+        carcass_weight_kg: carcassKg,
+        slaughtered_week: company.current_week,
+        slaughtered_day: company.current_day || "Mandag",
+        status: "cooling",
+        maturation_days: 0,
+        maturation_bonus_pct: 0,
+        max_maturation_days: 21,
+        destination: "pending",
+        expires_at: expiresAt,
+      });
+      await admin.from("stable_animals")
+        .update({ status: "slaughtered" })
+        .eq("id", animal.id);
+    }
+
+    // Ryd køen
+    await admin.from("companies").update({
+      slaughter_queue: [],
+      slaughter_started_at: null,
+      stable_current_animals: Math.max(0, (company.stable_current_animals || 0) - slaughterQueue.length),
+    }).eq("id", company.id);
+  }
 
   // 2b. Marker udløbne slagtekroppe som degraded
   await admin
