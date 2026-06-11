@@ -172,24 +172,25 @@ export default function DashboardPage() {
               <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide">
                 Aktuelle råvarepriser · {ind.label}
               </h2>
-              {!isSunday && (
-                <button onClick={() => router.push("/purchase")}
-                  className="text-xs text-brand-400 hover:text-brand-300 transition-colors">
-                  Gå til indkøb →
-                </button>
-              )}
+
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {prices.map(p => (
-                <div key={p.category}
-                  className={`stat-card ${!isSunday ? "cursor-pointer hover:border-stone-600" : ""} transition-colors`}
-                  onClick={() => !isSunday && router.push("/purchase")}>
+                <div key={p.category} className="stat-card">
                   <span className="stat-label">{p.category_label}</span>
                   <span className="stat-value text-brand-400">{p.price_dkk_per_kg} kr/kg</span>
                   <span className="text-xs text-stone-600">{p.best_use}</span>
                 </div>
               ))}
             </div>
+            {!isSunday && (
+              <button
+                onClick={() => router.push("/purchase")}
+                className="btn-primary w-full mt-3 py-3 text-base"
+              >
+                🐄 Gå til indkøb af levende dyr
+              </button>
+            )}
           </div>
         )}
 
