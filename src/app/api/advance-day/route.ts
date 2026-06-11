@@ -42,12 +42,29 @@ export async function POST(request: Request) {
     .eq("ready_for_slaughter", false)
     .in("arrived_day", arrivedDaysToMakeReady);
 
-  // 2. Kroppe der afkølede er nu klar
+  // 2. Kroppe der afkølede er nu klar – sæt holdbarhed (6 dage fra nu)
+  const expiresAt6 = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toISOString();
   await admin
     .from("cold_storage")
-    .update({ status: "ready" })
+    .update({ status: "ready", expires_at: expiresAt6 })
     .eq("company_id", company.id)
     .eq("status", "cooling");
+
+  // 2b. Marker udløbne slagtekroppe som degraded
+  await admin
+    .from("cold_storage")
+    .update({ status: "degraded" })
+    .eq("company_id", company.id)
+    .in("status", ["ready", "maturing"])
+    .lt("expires_at", new Date().toISOString());
+
+  // 2c. Marker udløbne delstykker som expired
+  await admin
+    .from("butchered_cuts")
+    .update({ status: "expired" })
+    .eq("company_id", company.id)
+    .eq("status", "available")
+    .lt("expires_at", new Date().toISOString());
 
   // 3. Opdater modningsdage
   const { data: maturingItems } = await admin
