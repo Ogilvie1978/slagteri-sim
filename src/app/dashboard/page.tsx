@@ -6,6 +6,7 @@ import { formatDKK } from "@/lib/utils";
 import type { Company, MarketWeek } from "@/lib/types";
 import { INDUSTRY_CONFIG } from "@/lib/types";
 import DayTimer from "@/components/DayTimer";
+import Navigation from "@/components/Navigation";
 
 type AnimalPrice = {
   category: string;
@@ -85,6 +86,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-stone-950">
+      <Navigation />
       <header className="border-b border-stone-800 bg-stone-900/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -94,13 +96,7 @@ export default function DashboardPage() {
               <p className="text-xs text-stone-500">{ind.label} · {company.region}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="badge-blue">Omdømme: {company.reputation}/100</span>
-            <button onClick={async () => { await supabase.auth.signOut(); router.push("/login"); }}
-              className="text-sm text-stone-500 hover:text-stone-300 transition-colors">
-              Log ud
-            </button>
-          </div>
+          <span className="badge-blue">Omdømme: {company.reputation}/100</span>
         </div>
       </header>
 
