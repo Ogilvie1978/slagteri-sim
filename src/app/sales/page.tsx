@@ -189,7 +189,7 @@ export default function SalesPage() {
     // Hold tidligste udløbsdato
     if (item.expires_at && (!acc[key].minExpiry || item.expires_at < acc[key].minExpiry)) acc[key].minExpiry = item.expires_at;
     return acc;
-  }, {} as Record<string, CutItem & { items: CutItem[]; totalKg: number; classes: string[] }>);
+  }, {} as Record<string, CutItem & { items: CutItem[]; totalKg: number; classes: string[]; minExpiry: string | null }>);
 
   return (
     <div className="min-h-screen bg-stone-950">
