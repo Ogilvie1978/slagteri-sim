@@ -17,6 +17,8 @@ export async function POST() {
     }
   );
 
+  const DAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
+
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -28,19 +30,22 @@ export async function POST() {
 
   if (!company) return NextResponse.json({ error: "No company" }, { status: 404 });
 
-  const DAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
   const currentDayNum = company.week_day_number || 1;
   const isLastDay = currentDayNum >= 5 && !company.saturday_approved;
   const isSaturday = currentDayNum === 6;
 
-  // 1. Dyr der ankom i går er nu klar til slagtning
+  // 1. Dyr der ankom FØR i dag er nu klar til slagtning (levering næste dag)
+  // Vi sætter alle hvilende dyr klar som ikke ankom samme dag som nu
+  const currentDayIdx = DAYS.indexOf(company.current_day || "Mandag");
+  const arrivedDaysToMakeReady = DAYS.filter((_, i) => i !== currentDayIdx);
+
   await supabase
     .from("stable_animals")
     .update({ ready_for_slaughter: true })
     .eq("company_id", company.id)
     .eq("status", "resting")
     .eq("ready_for_slaughter", false)
-    .neq("arrived_day", company.current_day);
+    .in("arrived_day", arrivedDaysToMakeReady);
 
   // 2. Dyr der afkøler i kølerummet er nu klar
   await supabase
