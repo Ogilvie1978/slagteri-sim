@@ -7,6 +7,7 @@ import type { Company, MarketWeek } from "@/lib/types";
 import { INDUSTRY_CONFIG } from "@/lib/types";
 import DayTimer from "@/components/DayTimer";
 import Navigation from "@/components/Navigation";
+import SlaughterProgress from "@/components/SlaughterProgress";
 
 type AnimalPrice = {
   category: string;
@@ -33,6 +34,7 @@ export default function DashboardPage() {
   const [prices, setPrices] = useState<AnimalPrice[]>([]);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
   const [hasPurchased, setHasPurchased] = useState(false);
+  const [stableAnimals, setStableAnimals] = useState<{id:string;animal_category:string;quantity:number;actual_weight_kg:number;ready_for_slaughter:boolean;stress_level:number}[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const supabase = createClient();
@@ -46,7 +48,7 @@ export default function DashboardPage() {
     if (!co) { router.push("/onboarding"); return; }
     setCompany(co);
 
-    const [mwRes, apRes, buyerRes, purchaseRes] = await Promise.all([
+    const [mwRes, apRes, buyerRes, purchaseRes, stableRes] = await Promise.all([
       supabase.from("market_weeks").select("*").eq("week_number", co.current_week).single(),
       supabase.from("animal_prices")
         .select("category, category_label, best_use, price_dkk_per_kg")
@@ -56,12 +58,17 @@ export default function DashboardPage() {
       supabase.from("raw_material_purchases").select("id")
         .eq("company_id", co.id).eq("week_number", co.current_week)
         .eq("is_weekend", false).limit(1),
+      supabase.from("stable_animals").select("id,animal_category,quantity,actual_weight_kg,ready_for_slaughter,stress_level")
+        .eq("company_id", co.id)
+        .eq("ready_for_slaughter", true)
+        .eq("status", "resting"),
     ]);
 
     setMarket(mwRes.data);
     setPrices(apRes.data || []);
     setBuyers(buyerRes.data || []);
     setHasPurchased((purchaseRes.data || []).length > 0);
+    setStableAnimals(stableRes.data || []);
     setLoading(false);
   }, []);
 
@@ -101,6 +108,17 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+
+        {/* Slagte-progress */}
+        <SlaughterProgress
+          companyId={company.id}
+          currentDay={company.current_day || "Mandag"}
+          weekDayNumber={company.week_day_number || 1}
+          dayStartedAt={company.day_started_at || new Date().toISOString()}
+          stableAnimals={stableAnimals}
+          baseAnimalPrice={prices[0]?.price_dkk_per_kg || 22.5}
+          onUpdate={load}
+        />
 
         {/* Dag-timer */}
         <DayTimer
