@@ -189,6 +189,15 @@ export default function SlaughterLine({ readyAnimals, company, onSlaughter, proc
 
   const totalKgToday = slaughteredToday.reduce((s, a) => s + a.kg, 0);
 
+  // Gruppér klar-dyr per kategori
+  const groupedReady = readyAnimals.reduce((acc, a) => {
+    if (!acc[a.animal_category]) acc[a.animal_category] = [];
+    acc[a.animal_category].push(a);
+    return acc;
+  }, {} as Record<string, Animal[]>);
+
+  const totalMins = readyAnimals.reduce((s, a) => s + minutesPerAnimal(slaughterers, a.actual_weight_kg), 0);
+
   return (
     <div className="space-y-4">
 
@@ -198,7 +207,7 @@ export default function SlaughterLine({ readyAnimals, company, onSlaughter, proc
           <div>
             <p className="text-sm font-medium text-stone-300">Slagtelinje</p>
             <p className="text-xs text-stone-500 mt-0.5">
-              {slaughterers} slagtere · {minutesPerAnimal(slaughterers, 600).toFixed(1)} min/tung dyr · {minutesPerAnimal(slaughterers, 80).toFixed(1)} min/lille dyr
+              {slaughterers} slagtere · ~{minutesPerAnimal(slaughterers, 600).toFixed(1)} min/tung dyr
             </p>
           </div>
           <div className="text-right">
@@ -208,29 +217,30 @@ export default function SlaughterLine({ readyAnimals, company, onSlaughter, proc
         </div>
       </div>
 
-      {/* Kø-setup */}
+      {/* Kø-setup – grupperet per kategori */}
       {!running && queue.length === 0 && readyAnimals.length > 0 && (
-        <div className="card">
-          <p className="text-sm text-stone-300 mb-3">
-            {readyAnimals.length} dyr klar til slagtning
-          </p>
-          <div className="space-y-2 mb-4">
-            {readyAnimals.slice(0, 5).map(a => (
-              <div key={a.id} className="flex items-center justify-between text-sm">
-                <span className="text-stone-300">{ANIMAL_LABELS[a.animal_category]}</span>
-                <span className="text-stone-500">{a.actual_weight_kg} kg · ~{minutesPerAnimal(slaughterers, a.actual_weight_kg).toFixed(1)} min</span>
+        <div className="card space-y-3">
+          {Object.entries(groupedReady).map(([cat, animals]) => {
+            const totalKg = animals.reduce((s, a) => s + a.actual_weight_kg, 0);
+            const estMins = animals.reduce((s, a) => s + minutesPerAnimal(slaughterers, a.actual_weight_kg), 0);
+            return (
+              <div key={cat} className="flex items-center justify-between">
+                <div>
+                  <span className="text-stone-100 text-sm font-medium">{ANIMAL_LABELS[cat]}</span>
+                  <span className="text-stone-500 text-xs ml-2">{animals.length} styk · {Math.round(totalKg)} kg levende</span>
+                </div>
+                <span className="text-stone-500 text-xs">~{estMins.toFixed(0)} min</span>
               </div>
-            ))}
-            {readyAnimals.length > 5 && (
-              <p className="text-xs text-stone-600">+ {readyAnimals.length - 5} flere dyr</p>
-            )}
+            );
+          })}
+          <div className="border-t border-stone-700 pt-3">
+            <p className="text-xs text-stone-500 mb-3">
+              Total: {readyAnimals.length} dyr · estimeret ~{totalMins.toFixed(0)} min
+            </p>
+            <button onClick={() => { setQueue([...readyAnimals]); }} className="btn-primary w-full py-2.5">
+              ⚙️ Start slagtelinje – alle {readyAnimals.length} dyr
+            </button>
           </div>
-          <p className="text-xs text-stone-500 mb-3">
-            Estimeret total: ~{readyAnimals.reduce((s, a) => s + minutesPerAnimal(slaughterers, a.actual_weight_kg), 0).toFixed(0)} minutter
-          </p>
-          <button onClick={() => { addAllToQueue(); }} className="btn-primary w-full py-2.5">
-            ⚙️ Start slagtelinje ({readyAnimals.length} dyr)
-          </button>
         </div>
       )}
 
@@ -250,24 +260,18 @@ export default function SlaughterLine({ readyAnimals, company, onSlaughter, proc
           <div className="flex items-center justify-between mb-2">
             <div>
               <p className="text-sm font-medium text-stone-100">
-                ⚙️ Slagter: {ANIMAL_LABELS[currentAnimal.animal_category]}
+                ⚙️ {ANIMAL_LABELS[currentAnimal.animal_category]}
               </p>
               <p className="text-xs text-stone-500 mt-0.5">
-                {currentAnimal.actual_weight_kg} kg levende · ~{(currentAnimal.actual_weight_kg * 0.55).toFixed(0)} kg slagtevægt
+                {currentAnimal.actual_weight_kg} kg · ~{(currentAnimal.actual_weight_kg * 0.55).toFixed(0)} kg slagtevægt · {queue.length} dyr tilbage
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-stone-500">Tilbage i kø</p>
-              <p className="text-sm font-bold text-stone-300">{queue.length} dyr</p>
-            </div>
+            <span className="text-stone-400 text-sm font-mono">{Math.round(progress)}%</span>
           </div>
-          <div className="w-full bg-stone-800 rounded-full h-3 mb-1">
-            <div
-              className="h-3 rounded-full bg-green-500 transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
+          <div className="w-full bg-stone-800 rounded-full h-3">
+            <div className="h-3 rounded-full bg-green-500 transition-all duration-500"
+              style={{ width: `${progress}%` }} />
           </div>
-          <p className="text-xs text-stone-600 text-right">{Math.round(progress)}%</p>
         </div>
       )}
 
@@ -275,7 +279,7 @@ export default function SlaughterLine({ readyAnimals, company, onSlaughter, proc
       {slaughteredToday.length > 0 && (
         <div className="card">
           <p className="text-xs font-medium text-stone-500 uppercase tracking-wide mb-3">
-            Slagtet i dag – {slaughteredToday.length} dyr
+            Slagtet i dag – {slaughteredToday.length} dyr · {Math.round(totalKgToday)} kg slagtevægt
           </p>
           <div className="flex gap-2 flex-wrap">
             {Object.entries(seuropSummary).map(([cls, kg]) => (
@@ -285,9 +289,7 @@ export default function SlaughterLine({ readyAnimals, company, onSlaughter, proc
               </div>
             ))}
           </div>
-          <p className="text-xs text-stone-600 mt-2">
-            Kroppe afkøler – klar til behandling i morgen
-          </p>
+          <p className="text-xs text-stone-600 mt-2">Kroppe afkøler – klar til behandling i morgen</p>
         </div>
       )}
 
