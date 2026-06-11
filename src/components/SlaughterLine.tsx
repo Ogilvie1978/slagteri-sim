@@ -118,7 +118,7 @@ export default function SlaughterLine({ readyAnimals, company, slaughterers, onD
   const [currentAnimal, setCurrentAnimal] = useState<QueueAnimal | null>(null);
   const [currentProgress, setCurrentProgress] = useState(0);
   const [slaughteredResults, setSlaughteredResults] = useState<SlaughteredResult[]>([]);
-  const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
+  const [processedIds, setProcessedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
 
@@ -142,7 +142,7 @@ export default function SlaughterLine({ readyAnimals, company, slaughterers, onD
       setCurrentProgress(cp);
 
       // Gem slagtede dyr der ikke er behandlet endnu
-      const newlyDone = done.filter(a => !processedIds.has(a.id));
+      const newlyDone = done.filter(a => !processedIds.includes(a.id));
       if (newlyDone.length > 0) {
         for (const animal of newlyDone) {
           const seurop = getSEUROPClass(animal.animal_category, animal.stress_level);
@@ -166,13 +166,13 @@ export default function SlaughterLine({ readyAnimals, company, slaughterers, onD
             .update({ status: "slaughtered" })
             .eq("id", animal.id);
 
-          setProcessedIds(prev => new Set([...prev, animal.id]));
+          setProcessedIds(prev => [...prev, animal.id]);
           setSlaughteredResults(prev => [...prev, { category: animal.animal_category, seurop, kg: carcassKg }]);
         }
       }
 
       // Færdig
-      if (!current && done.length >= localQueue.length) {
+      if (!current && done.length > 0 && done.length >= localQueue.length) {
         clearInterval(interval);
         await supabase.from("companies").update({
           slaughter_queue: [],
@@ -288,7 +288,7 @@ export default function SlaughterLine({ readyAnimals, company, slaughterers, onD
             <div className="text-right">
               <p className="text-xs text-stone-500">I kø</p>
               <p className="text-sm font-bold text-stone-300">
-                {localQueue.filter(a => !processedIds.has(a.id) && a.id !== currentAnimal.id).length} dyr
+                {localQueue.filter(a => !processedIds.includes(a.id) && a.id !== currentAnimal!.id).length} dyr
               </p>
             </div>
           </div>
