@@ -125,7 +125,7 @@ function PurchaseContent() {
         quantity_animals: item.unit === "styk" ? item.quantity : null,
         price_per_kg: item.price_per_kg,
         total_cost: Math.round(estimatedCost(item)),
-        supplier_name: isWeekend ? "Weekend-marked" : "Lokalt landbrug",
+        supplier_name: isWeekend ? "Weekend-marked (daglevering)" : "Lokalt landbrug (næste dag)",
         is_weekend: isWeekend,
       })));
 
@@ -160,7 +160,7 @@ function PurchaseContent() {
           actual_weight_kg: Math.round((min + Math.random() * (max - min)) * 10) / 10,
           arrived_week: company!.current_week,
           arrived_day: company!.current_day || "Mandag",
-          ready_for_slaughter: false,
+          ready_for_slaughter: isWeekend, // Weekend = leveres nu, klar i dag
           health_status: "ok",
           vet_checked: false,
           stress_level: Math.floor(Math.random() * 30) + 10,
@@ -212,7 +212,7 @@ function PurchaseContent() {
                 {isWeekend ? "Weekend-marked" : "Indkøb af levende dyr"}
               </h1>
               <p className="text-xs text-stone-500">
-                {isWeekend ? "Til lørdag · +5% weekendtillæg" : `Uge ${company.current_week} · Til mandag`}
+                {isWeekend ? "Levering i dag · +5% weekendtillæg" : `Levering i morgen · Uge ${company.current_week}`}
               </p>
             </div>
           </div>
