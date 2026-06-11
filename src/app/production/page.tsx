@@ -5,6 +5,21 @@ import { useRouter } from "next/navigation";
 import { formatDKK } from "@/lib/utils";
 import type { Company } from "@/lib/types";
 
+type StableAnimal = {
+  id: string;
+  animal_category: string;
+  quantity: number;
+  actual_weight_kg: number;
+  arrived_week: number;
+  arrived_day: string;
+  arrived_at: string;
+  ready_for_slaughter: boolean;
+  health_status: string;
+  vet_checked: boolean;
+  stress_level: number;
+  status: string;
+};
+
 type ColdStorageItem = {
   id: string;
   animal_category: string;
@@ -17,8 +32,6 @@ type ColdStorageItem = {
   maturation_days: number;
   maturation_bonus_pct: number;
   max_maturation_days: number;
-  reserved_for_buyer: string | null;
-  notes: string | null;
 };
 
 type CutDefinition = {
@@ -45,8 +58,6 @@ type ButcheredCut = {
   maturation_bonus_pct: number;
   is_vacuum_packed: boolean;
   status: string;
-  week_butchered: number;
-  day_butchered: string;
 };
 
 const SEUROP_COLORS: Record<string, string> = {
@@ -58,29 +69,55 @@ const SEUROP_COLORS: Record<string, string> = {
   P: "bg-red-900 text-red-300 border-red-700",
 };
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  cooling:           { label: "Køler ned",    color: "text-blue-400" },
-  ready:             { label: "Klar",          color: "text-green-400" },
-  maturing:          { label: "Modner",        color: "text-amber-400" },
-  butchering_queue:  { label: "Til udbening",  color: "text-purple-400" },
-  butchered:         { label: "Udbenet",       color: "text-stone-400" },
-  sold_quarter:      { label: "Solgt (1/4)",   color: "text-stone-500" },
-  degraded:          { label: "Kvalitetstab",  color: "text-red-400" },
-};
-
 const ANIMAL_LABELS: Record<string, string> = {
   young_bulls: "Ungtyre", heifers: "Kvier", steers: "Stude", cows: "Køer",
   class_s: "Klasse S svin", class_e: "Klasse E svin", class_r: "Klasse R svin",
   light: "Let lam", heavy: "Tungt lam", broiler: "Slagtekylling", hen: "Høne",
 };
 
+const SECTIONS = [
+  { key: "stable",    label: "Modtagelse / stald", emoji: "🐄" },
+  { key: "slaughter", label: "Slagtelinje",         emoji: "⚙️" },
+  { key: "cold",      label: "Kølelager",           emoji: "🧊" },
+  { key: "butchery",  label: "Udbening / opskæring",emoji: "🔪" },
+  { key: "packing",   label: "Pakkeri",             emoji: "📦" },
+  { key: "packed",    label: "Pakkelager",           emoji: "🏭" },
+];
+
+function getSEUROPExpectation(category: string, stressLevel: number) {
+  const base: Record<string, { class: string; pct: number }[]> = {
+    young_bulls: [
+      { class: "S", pct: 5 }, { class: "E", pct: 30 },
+      { class: "U", pct: 40 }, { class: "R", pct: 20 }, { class: "O", pct: 5 },
+    ],
+    heifers: [
+      { class: "E", pct: 20 }, { class: "U", pct: 35 },
+      { class: "R", pct: 35 }, { class: "O", pct: 10 },
+    ],
+    steers: [
+      { class: "U", pct: 20 }, { class: "R", pct: 45 },
+      { class: "O", pct: 30 }, { class: "P", pct: 5 },
+    ],
+    cows: [
+      { class: "R", pct: 10 }, { class: "O", pct: 45 }, { class: "P", pct: 45 },
+    ],
+  };
+  const def = base[category] || [{ class: "R", pct: 100 }];
+  // Høj stress skubber klasser ned
+  if (stressLevel > 60) {
+    return def.map(d => ({ ...d, pct: d.pct }));
+  }
+  return def;
+}
+
 export default function ProductionPage() {
   const [company, setCompany] = useState<Company | null>(null);
+  const [stableAnimals, setStableAnimals] = useState<StableAnimal[]>([]);
   const [coldStorage, setColdStorage] = useState<ColdStorageItem[]>([]);
   const [butcheredCuts, setButcheredCuts] = useState<ButcheredCut[]>([]);
   const [cutDefs, setCutDefs] = useState<CutDefinition[]>([]);
-  const [activeTab, setActiveTab] = useState<"cold" | "cuts">("cold");
-  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState("stable");
+  const [selectedColdItem, setSelectedColdItem] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const router = useRouter();
@@ -89,12 +126,15 @@ export default function ProductionPage() {
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push("/login"); return; }
-
     const { data: co } = await supabase.from("companies").select("*").eq("player_id", user.id).single();
     if (!co) { router.push("/onboarding"); return; }
     setCompany(co);
 
-    const [coldRes, cutsRes, defRes] = await Promise.all([
+    const [stableRes, coldRes, cutsRes, defRes] = await Promise.all([
+      supabase.from("stable_animals").select("*")
+        .eq("company_id", co.id)
+        .not("status", "in", '("slaughtered","rejected")')
+        .order("arrived_at"),
       supabase.from("cold_storage").select("*")
         .eq("company_id", co.id)
         .not("status", "in", '("sold_quarter","butchered")')
@@ -108,6 +148,7 @@ export default function ProductionPage() {
         .order("sort_order"),
     ]);
 
+    setStableAnimals(stableRes.data || []);
     setColdStorage(coldRes.data || []);
     setButcheredCuts(cutsRes.data || []);
     setCutDefs(defRes.data || []);
@@ -116,28 +157,32 @@ export default function ProductionPage() {
 
   useEffect(() => { load(); }, []);
 
-  async function setMaturing(id: string) {
+  async function slaughterAnimal(animal: StableAnimal, basePrice: number) {
+    if (!company) return;
     setProcessing(true);
-    await supabase.from("cold_storage").update({ status: "maturing" }).eq("id", id);
-    setProcessing(false);
-    load();
-  }
 
-  async function queueForButchering(id: string) {
-    setProcessing(true);
-    await supabase.from("cold_storage")
-      .update({ status: "butchering_queue" }).eq("id", id);
-    setProcessing(false);
-    load();
-  }
+    const seurop = getSEUROPExpectation(animal.animal_category, animal.stress_level);
+    const carcassWeight = animal.actual_weight_kg * 0.55;
 
-  async function sellAsQuarter(id: string, item: ColdStorageItem, basePrice: number) {
-    setProcessing(true);
-    const revenue = Math.round(item.carcass_weight_kg * basePrice * (1 + item.maturation_bonus_pct / 100));
-    await supabase.from("cold_storage").update({ status: "sold_quarter" }).eq("id", id);
+    const coldItems = seurop.map(cls => ({
+      company_id: company.id,
+      animal_category: animal.animal_category,
+      seurop_class: cls.class,
+      carcass_weight_kg: Math.round(carcassWeight * cls.pct / 100 * 10) / 10,
+      slaughtered_week: company.current_week,
+      slaughtered_day: company.current_day || "Mandag",
+      status: "cooling",
+      maturation_days: 0,
+      maturation_bonus_pct: 0,
+      max_maturation_days: 21,
+    })).filter(i => i.carcass_weight_kg > 0);
+
+    await supabase.from("cold_storage").insert(coldItems);
+    await supabase.from("stable_animals").update({ status: "slaughtered" }).eq("id", animal.id);
     await supabase.from("companies").update({
-      cash: (company?.cash || 0) + revenue
-    }).eq("id", company?.id);
+      stable_current_animals: Math.max(0, (company.stable_current_animals || 0) - animal.quantity)
+    }).eq("id", company.id);
+
     setProcessing(false);
     load();
   }
@@ -147,7 +192,6 @@ export default function ProductionPage() {
     setProcessing(true);
 
     const relevantDefs = cutDefs.filter(d => d.animal_category === item.animal_category);
-
     const cuts = relevantDefs.map(def => ({
       company_id: company.id,
       cold_storage_id: item.id,
@@ -166,9 +210,25 @@ export default function ProductionPage() {
 
     await supabase.from("butchered_cuts").insert(cuts);
     await supabase.from("cold_storage").update({ status: "butchered" }).eq("id", item.id);
-
+    setSelectedColdItem(null);
     setProcessing(false);
-    setSelectedItem(null);
+    load();
+  }
+
+  async function sellAsQuarter(item: ColdStorageItem, basePrice: number) {
+    if (!company) return;
+    setProcessing(true);
+    const revenue = Math.round(item.carcass_weight_kg * basePrice * (1 + item.maturation_bonus_pct / 100));
+    await supabase.from("cold_storage").update({ status: "sold_quarter" }).eq("id", item.id);
+    await supabase.from("companies").update({ cash: company.cash + revenue }).eq("id", company.id);
+    setProcessing(false);
+    load();
+  }
+
+  async function setMaturing(id: string) {
+    setProcessing(true);
+    await supabase.from("cold_storage").update({ status: "maturing" }).eq("id", id);
+    setProcessing(false);
     load();
   }
 
@@ -177,19 +237,28 @@ export default function ProductionPage() {
       <p className="text-stone-500">Indlæser...</p>
     </div>
   );
-
   if (!company) return null;
 
-  const readyItems = coldStorage.filter(i => i.status === "ready" || i.status === "maturing");
-  const coolingItems = coldStorage.filter(i => i.status === "cooling");
-  const queueItems = coldStorage.filter(i => i.status === "butchering_queue");
-  const totalColdKg = coldStorage.reduce((sum, i) => sum + i.carcass_weight_kg, 0);
-  const capacityPct = Math.round(totalColdKg / (company.cold_storage_capacity_kg || 50000) * 100);
+  const stablePct = Math.round((company.stable_current_animals || 0) / (company.stable_capacity_animals || 100) * 100);
+  const coldKg = coldStorage.reduce((s, i) => s + i.carcass_weight_kg, 0);
+  const coldPct = Math.round(coldKg / (company.cold_storage_capacity_kg || 50000) * 100);
+  const cutsValue = butcheredCuts.reduce((s, c) => s + c.weight_kg * c.base_price_dkk_per_kg * (1 + c.maturation_bonus_pct / 100), 0);
 
-  const totalCutsValue = butcheredCuts.reduce((sum, c) => {
-    const price = c.base_price_dkk_per_kg * (1 + c.maturation_bonus_pct / 100) * (c.is_vacuum_packed ? 1.2 : 1);
-    return sum + c.weight_kg * price;
-  }, 0);
+  const readyForSlaughter = stableAnimals.filter(a => a.ready_for_slaughter && a.status === "resting");
+  const resting = stableAnimals.filter(a => !a.ready_for_slaughter);
+  const readyCold = coldStorage.filter(i => i.status === "ready" || i.status === "maturing");
+  const coolingCold = coldStorage.filter(i => i.status === "cooling");
+  const vacuumCuts = butcheredCuts.filter(c => c.is_vacuum_packed);
+  const unpackedCuts = butcheredCuts.filter(c => !c.is_vacuum_packed);
+
+  const sectionCounts: Record<string, number> = {
+    stable: stableAnimals.length,
+    slaughter: readyForSlaughter.length,
+    cold: coldStorage.length,
+    butchery: coldStorage.filter(i => i.status === "butchering_queue").length,
+    packing: unpackedCuts.length,
+    packed: vacuumCuts.length,
+  };
 
   return (
     <div className="min-h-screen bg-stone-950">
@@ -197,179 +266,265 @@ export default function ProductionPage() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={() => router.push("/dashboard")}
-              className="text-stone-500 hover:text-stone-300 text-sm transition-colors">
-              ← Tilbage
-            </button>
+              className="text-stone-500 hover:text-stone-300 text-sm transition-colors">← Tilbage</button>
             <div className="w-px h-5 bg-stone-700" />
             <div>
               <h1 className="font-bold text-stone-100">Produktion</h1>
               <p className="text-xs text-stone-500">{company.name} · {company.current_day}</p>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-right">
+          <div className="flex items-center gap-4 text-right text-xs">
             <div>
-              <p className="text-xs text-stone-500">Kølelager</p>
-              <p className={`font-bold text-sm ${capacityPct > 80 ? "text-red-400" : capacityPct > 60 ? "text-yellow-400" : "text-stone-300"}`}>
-                {Math.round(totalColdKg).toLocaleString("da-DK")} / {(company.cold_storage_capacity_kg || 50000).toLocaleString("da-DK")} kg
+              <p className="text-stone-500">Stald</p>
+              <p className={`font-bold ${stablePct > 80 ? "text-red-400" : "text-stone-300"}`}>
+                {company.stable_current_animals || 0}/{company.stable_capacity_animals || 100} dyr
               </p>
             </div>
             <div>
-              <p className="text-xs text-stone-500">Lagerværdi</p>
-              <p className="font-bold text-green-400 text-sm">{formatDKK(Math.round(totalCutsValue))}</p>
+              <p className="text-stone-500">Kølelager</p>
+              <p className={`font-bold ${coldPct > 80 ? "text-red-400" : "text-stone-300"}`}>
+                {Math.round(coldKg).toLocaleString("da-DK")} kg
+              </p>
+            </div>
+            <div>
+              <p className="text-stone-500">Lagerværdi</p>
+              <p className="font-bold text-green-400">{formatDKK(Math.round(cutsValue))}</p>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+      <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
 
-        {/* Kapacitetsbar */}
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-stone-400">Kølerumskapacitet</span>
-            <span className={`text-sm font-medium ${capacityPct > 80 ? "text-red-400" : "text-stone-300"}`}>
-              {capacityPct}%
-            </span>
-          </div>
-          <div className="w-full bg-stone-800 rounded-full h-2">
-            <div
-              className={`h-2 rounded-full transition-all ${capacityPct > 80 ? "bg-red-500" : capacityPct > 60 ? "bg-yellow-500" : "bg-green-500"}`}
-              style={{ width: `${Math.min(capacityPct, 100)}%` }}
-            />
-          </div>
-          {capacityPct > 80 && (
-            <p className="text-xs text-red-400 mt-1">Kølerummet er næsten fuldt – sælg eller udbén snart!</p>
-          )}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2">
-          {[
-            { key: "cold", label: "🧊 Kølelager", count: coldStorage.length },
-            { key: "cuts", label: "🔪 Delstykker", count: butcheredCuts.length },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as "cold" | "cuts")}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
-                activeTab === tab.key
-                  ? "bg-stone-700 border-stone-500 text-stone-100"
-                  : "bg-stone-900 border-stone-800 text-stone-400 hover:bg-stone-800"
-              }`}
-            >
-              {tab.label}
-              <span className="bg-stone-600 text-stone-200 text-xs px-1.5 py-0.5 rounded-full">
-                {tab.count}
-              </span>
+        {/* Sektion-navigation */}
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          {SECTIONS.map(s => (
+            <button key={s.key} onClick={() => setActiveSection(s.key)}
+              className={`card text-center py-3 px-2 transition-all ${activeSection === s.key ? "border-brand-500 bg-stone-800" : "hover:border-stone-600"}`}>
+              <div className="text-xl mb-1">{s.emoji}</div>
+              <div className={`text-xs font-medium leading-tight ${activeSection === s.key ? "text-stone-100" : "text-stone-400"}`}>
+                {s.label}
+              </div>
+              {sectionCounts[s.key] > 0 && (
+                <div className={`text-lg font-bold mt-1 ${activeSection === s.key ? "text-brand-400" : "text-stone-500"}`}>
+                  {sectionCounts[s.key]}
+                </div>
+              )}
             </button>
           ))}
         </div>
 
-        {/* KØLELAGER */}
-        {activeTab === "cold" && (
+        {/* MODTAGELSE / STALD */}
+        {activeSection === "stable" && (
           <div className="space-y-4">
+            <div className="card p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-stone-400">Staldkapacitet</span>
+                <span className={`text-sm font-medium ${stablePct > 80 ? "text-red-400" : "text-stone-300"}`}>{stablePct}%</span>
+              </div>
+              <div className="w-full bg-stone-800 rounded-full h-2">
+                <div className={`h-2 rounded-full ${stablePct > 80 ? "bg-red-500" : "bg-green-500"}`}
+                  style={{ width: `${Math.min(stablePct, 100)}%` }} />
+              </div>
+              <p className="text-xs text-stone-600 mt-1">
+                {company.stable_current_animals || 0} af {company.stable_capacity_animals || 100} pladser brugt
+              </p>
+            </div>
 
-            {coolingItems.length > 0 && (
+            {resting.length > 0 && (
               <div>
                 <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
-                  Afkøler ({coolingItems.length} poster)
+                  Hviler – ikke klar endnu ({resting.length})
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {coolingItems.map(item => (
-                    <div key={item.id} className="card border-blue-900/50 opacity-70">
+                  {resting.map(a => (
+                    <div key={a.id} className="card opacity-70">
                       <div className="flex items-center justify-between">
                         <div>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded border mr-2 ${SEUROP_COLORS[item.seurop_class]}`}>
-                            {item.seurop_class}
-                          </span>
-                          <span className="text-stone-300 text-sm">{ANIMAL_LABELS[item.animal_category]}</span>
+                          <span className="text-stone-100 text-sm font-medium">{ANIMAL_LABELS[a.animal_category]}</span>
+                          <span className="text-stone-500 text-xs ml-2">{a.quantity} styk</span>
                         </div>
-                        <span className="text-stone-400 text-sm font-medium">
-                          {item.carcass_weight_kg.toFixed(1)} kg
-                        </span>
+                        <span className="text-stone-400 text-sm">{a.actual_weight_kg.toFixed(0)} kg/styk</span>
                       </div>
-                      <p className="text-xs text-blue-400 mt-2">
-                        ❄️ Afkøler – klar til udbening i morgen
-                      </p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <p className="text-xs text-blue-400">💤 Hviler – klar næste dag</p>
+                        {a.vet_checked && <span className="badge-green">Dyrlæge ✓</span>}
+                        {!a.vet_checked && <span className="badge-red">Afventer dyrlæge</span>}
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {readyItems.length > 0 && (
+            {readyForSlaughter.length > 0 && (
               <div>
                 <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
-                  Klar til behandling ({readyItems.length} poster)
+                  Klar til slagtning ({readyForSlaughter.length})
                 </h2>
                 <div className="space-y-3">
-                  {readyItems.map(item => {
-                    const isSelected = selectedItem === item.id;
-                    const isMaturing = item.status === "maturing";
+                  {readyForSlaughter.map(a => {
+                    const seurop = getSEUROPExpectation(a.animal_category, a.stress_level);
                     return (
-                      <div key={item.id} className={`card transition-all ${isSelected ? "border-brand-500" : ""}`}>
+                      <div key={a.id} className="card">
                         <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SEUROP_COLORS[item.seurop_class]}`}>
-                              {item.seurop_class}
-                            </span>
-                            <span className="text-stone-100 text-sm font-medium">
-                              {ANIMAL_LABELS[item.animal_category]}
-                            </span>
-                            <span className="text-stone-500 text-xs">
-                              {item.carcass_weight_kg.toFixed(1)} kg
-                            </span>
+                          <div>
+                            <span className="text-stone-100 font-medium">{ANIMAL_LABELS[a.animal_category]}</span>
+                            <span className="text-stone-500 text-xs ml-2">{a.quantity} styk · {a.actual_weight_kg.toFixed(0)} kg/styk</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {item.maturation_bonus_pct > 0 && (
-                              <span className="badge-yellow">+{item.maturation_bonus_pct}% modning</span>
-                            )}
-                            {isMaturing && (
-                              <span className="text-xs text-amber-400">
-                                Dag {item.maturation_days} / {item.max_maturation_days}
-                              </span>
-                            )}
+                          <div className="flex gap-2">
+                            {a.stress_level > 60 && <span className="badge-red">Stresset</span>}
+                            {a.stress_level <= 60 && <span className="badge-green">Rolig</span>}
+                            {a.vet_checked && <span className="badge-green">Dyrlæge ✓</span>}
                           </div>
                         </div>
+                        <div className="flex gap-2 flex-wrap mb-3">
+                          {seurop.map(cls => (
+                            <div key={cls.class} className="flex items-center gap-1">
+                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${SEUROP_COLORS[cls.class]}`}>{cls.class}</span>
+                              <span className="text-xs text-stone-500">~{cls.pct}%</span>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => slaughterAnimal(a, 22.5)}
+                          disabled={processing}
+                          className="btn-primary w-full py-2 text-sm"
+                        >
+                          ⚙️ Send til slagtelinje
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
+            {stableAnimals.length === 0 && (
+              <div className="card border-dashed border-stone-700 text-center py-12">
+                <p className="text-stone-500">Ingen dyr i stalden</p>
+                <button onClick={() => router.push("/purchase")} className="btn-secondary mt-4">
+                  Gå til indkøb →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SLAGTELINJE */}
+        {activeSection === "slaughter" && (
+          <div className="space-y-4">
+            <div className="card border-l-4 border-l-coral-500 bg-stone-900/50">
+              <p className="text-stone-300 text-sm">
+                Slagtelinjen behandler dyr der er klar fra stalden. Efter slagtning klassificeres kroppene efter SEUROP og sendes i kølerummet.
+              </p>
+            </div>
+            {readyForSlaughter.length > 0 ? (
+              <div className="space-y-3">
+                <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide">
+                  Klar til slagtning ({readyForSlaughter.length})
+                </h2>
+                {readyForSlaughter.map(a => (
+                  <div key={a.id} className="card">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-stone-100 font-medium">{ANIMAL_LABELS[a.animal_category]}</span>
+                        <span className="text-stone-500 text-xs ml-2">{a.quantity} styk</span>
+                      </div>
+                      <button
+                        onClick={() => slaughterAnimal(a, 22.5)}
+                        disabled={processing}
+                        className="btn-primary py-2 text-sm"
+                      >
+                        Slagt nu
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="card border-dashed border-stone-700 text-center py-12">
+                <p className="text-stone-500">Ingen dyr klar til slagtning</p>
+                <p className="text-stone-600 text-sm mt-1">Dyr skal hvile minimum 1 dag i stalden</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* KØLELAGER */}
+        {activeSection === "cold" && (
+          <div className="space-y-4">
+            <div className="card p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-stone-400">Kølerumskapacitet</span>
+                <span className={`text-sm font-medium ${coldPct > 80 ? "text-red-400" : "text-stone-300"}`}>{coldPct}%</span>
+              </div>
+              <div className="w-full bg-stone-800 rounded-full h-2">
+                <div className={`h-2 rounded-full ${coldPct > 80 ? "bg-red-500" : coldPct > 60 ? "bg-yellow-500" : "bg-blue-500"}`}
+                  style={{ width: `${Math.min(coldPct, 100)}%` }} />
+              </div>
+            </div>
+
+            {coolingCold.length > 0 && (
+              <div>
+                <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
+                  Afkøler – ikke klar endnu ({coolingCold.length})
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {coolingCold.map(item => (
+                    <div key={item.id} className="card opacity-70">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SEUROP_COLORS[item.seurop_class]}`}>{item.seurop_class}</span>
+                        <span className="text-stone-400 text-sm">{item.carcass_weight_kg.toFixed(1)} kg</span>
+                      </div>
+                      <p className="text-xs text-stone-500 mt-1">{ANIMAL_LABELS[item.animal_category]}</p>
+                      <p className="text-xs text-blue-400 mt-1">❄️ Klar i morgen</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {readyCold.length > 0 && (
+              <div>
+                <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
+                  Klar til behandling ({readyCold.length})
+                </h2>
+                <div className="space-y-3">
+                  {readyCold.map(item => {
+                    const isSelected = selectedColdItem === item.id;
+                    return (
+                      <div key={item.id} className={`card transition-all ${isSelected ? "border-brand-500" : ""}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SEUROP_COLORS[item.seurop_class]}`}>{item.seurop_class}</span>
+                            <span className="text-stone-100 text-sm">{ANIMAL_LABELS[item.animal_category]}</span>
+                            <span className="text-stone-500 text-xs">{item.carcass_weight_kg.toFixed(1)} kg</span>
+                          </div>
+                          {item.maturation_bonus_pct > 0 && (
+                            <span className="badge-yellow">+{item.maturation_bonus_pct}% modning</span>
+                          )}
+                        </div>
                         {isSelected ? (
-                          <div className="space-y-2 pt-3 border-t border-stone-700">
-                            <p className="text-xs text-stone-500 mb-2">Hvad vil du gøre med denne krop?</p>
-                            <button
-                              onClick={() => butcherItem(item, 22.5)}
-                              disabled={processing}
-                              className="btn-primary w-full py-2 text-sm"
-                            >
-                              🔪 Udbén og opskær til delstykker
+                          <div className="space-y-2 pt-2 border-t border-stone-700">
+                            <button onClick={() => { setActiveSection("butchery"); setSelectedColdItem(item.id); }}
+                              className="btn-primary w-full py-2 text-sm">
+                              🔪 Send til udbening
                             </button>
-                            <button
-                              onClick={() => sellAsQuarter(item.id, item, 22.5)}
-                              disabled={processing}
-                              className="btn-secondary w-full py-2 text-sm"
-                            >
-                              📦 Sælg som 1/4 nu ({formatDKK(Math.round(item.carcass_weight_kg * 22.5))})
+                            <button onClick={() => sellAsQuarter(item, 22.5)} disabled={processing}
+                              className="btn-secondary w-full py-2 text-sm">
+                              📦 Sælg som 1/4 ({formatDKK(Math.round(item.carcass_weight_kg * 22.5))})
                             </button>
-                            {!isMaturing && (
-                              <button
-                                onClick={() => setMaturing(item.id)}
-                                disabled={processing}
-                                className="w-full py-2 text-sm bg-amber-950/30 border border-amber-800/50 text-amber-400 rounded-lg hover:bg-amber-950/50 transition-colors"
-                              >
-                                ⏳ Lad hænge til modning (+op til 20% pris)
-                              </button>
-                            )}
-                            <button
-                              onClick={() => setSelectedItem(null)}
-                              className="w-full text-xs text-stone-600 hover:text-stone-500 py-1"
-                            >
-                              Annuller
+                            <button onClick={() => setMaturing(item.id)} disabled={processing || item.status === "maturing"}
+                              className="w-full py-2 text-sm bg-amber-950/30 border border-amber-800/50 text-amber-400 rounded-lg hover:bg-amber-950/50 transition-colors">
+                              ⏳ Lad hænge til modning
                             </button>
+                            <button onClick={() => setSelectedColdItem(null)}
+                              className="w-full text-xs text-stone-600 hover:text-stone-500 py-1">Annuller</button>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => setSelectedItem(item.id)}
-                            className="btn-secondary w-full py-2 text-sm"
-                          >
+                          <button onClick={() => setSelectedColdItem(item.id)}
+                            className="btn-secondary w-full py-2 text-sm">
                             Vælg handling →
                           </button>
                         )}
@@ -380,102 +535,142 @@ export default function ProductionPage() {
               </div>
             )}
 
-            {queueItems.length > 0 && (
-              <div>
-                <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
-                  I kø til udbening ({queueItems.length} poster)
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {queueItems.map(item => (
-                    <div key={item.id} className="card border-purple-900/50">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SEUROP_COLORS[item.seurop_class]}`}>
-                            {item.seurop_class}
-                          </span>
-                          <span className="text-stone-300 text-sm">{ANIMAL_LABELS[item.animal_category]}</span>
-                        </div>
-                        <span className="text-stone-400 text-sm">{item.carcass_weight_kg.toFixed(1)} kg</span>
-                      </div>
-                      <p className="text-xs text-purple-400 mt-2">🔪 Venter på opskærer</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {coldStorage.length === 0 && (
               <div className="card border-dashed border-stone-700 text-center py-12">
-                <p className="text-stone-500">Ingen kroppe i kølerummet</p>
-                <p className="text-stone-600 text-sm mt-1">Køb dyr og start slagtning</p>
+                <p className="text-stone-500">Kølerummet er tomt</p>
               </div>
             )}
           </div>
         )}
 
-        {/* DELSTYKKER */}
-        {activeTab === "cuts" && (
+        {/* UDBENING */}
+        {activeSection === "butchery" && (
           <div className="space-y-4">
-            {["premium", "standard", "industrial"].map(cat => {
-              const items = butcheredCuts.filter(c => c.cut_category === cat);
-              if (items.length === 0) return null;
-              const catLabels: Record<string, string> = {
-                premium: "⭐ Premium udskæringer",
-                standard: "🛒 Standard udskæringer",
-                industrial: "🏭 Industrikød",
-              };
-              return (
-                <div key={cat}>
-                  <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
-                    {catLabels[cat]} ({items.length})
-                  </h2>
-                  <div className="space-y-2">
-                    {items.map(cut => {
-                      const effectivePrice = cut.base_price_dkk_per_kg *
-                        (1 + cut.maturation_bonus_pct / 100) *
-                        (cut.is_vacuum_packed ? 1.2 : 1);
-                      return (
-                        <div key={cut.id} className="card flex items-center justify-between gap-4">
-                          <div className="flex items-center gap-3">
-                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${SEUROP_COLORS[cut.seurop_class]}`}>
-                              {cut.seurop_class}
-                            </span>
-                            <div>
-                              <span className="text-stone-100 text-sm font-medium">{cut.cut_name}</span>
-                              <span className="text-stone-500 text-xs ml-2">{ANIMAL_LABELS[cut.animal_category]}</span>
-                            </div>
+            <div className="card border-l-4 border-l-purple-500 bg-stone-900/50">
+              <p className="text-stone-300 text-sm">
+                Kroppe fra kølerummet udskæres til delstykker her. Vælg en krop fra kølelageret og send den til udbening.
+              </p>
+            </div>
+            {readyCold.length > 0 ? (
+              <div className="space-y-3">
+                {readyCold.map(item => (
+                  <div key={item.id} className="card">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SEUROP_COLORS[item.seurop_class]}`}>{item.seurop_class}</span>
+                        <span className="text-stone-100">{ANIMAL_LABELS[item.animal_category]}</span>
+                        <span className="text-stone-500 text-xs">{item.carcass_weight_kg.toFixed(1)} kg</span>
+                      </div>
+                      {item.maturation_bonus_pct > 0 && <span className="badge-yellow">+{item.maturation_bonus_pct}%</span>}
+                    </div>
+                    <div className="bg-stone-800/50 rounded-lg p-3 mb-3">
+                      <p className="text-xs text-stone-500 mb-2">Forventede udskæringer</p>
+                      <div className="grid grid-cols-2 gap-1">
+                        {cutDefs.filter(d => d.animal_category === item.animal_category).slice(0, 6).map(def => (
+                          <div key={def.id} className="flex justify-between text-xs">
+                            <span className="text-stone-400">{def.cut_name}</span>
+                            <span className="text-stone-500">~{(item.carcass_weight_kg * def.yield_pct / 100).toFixed(1)} kg</span>
                           </div>
-                          <div className="flex items-center gap-4 text-right">
-                            <div>
-                              <p className="text-stone-300 text-sm">{cut.weight_kg.toFixed(1)} kg</p>
-                            </div>
-                            <div>
-                              <p className="text-brand-400 font-medium text-sm">
-                                {effectivePrice.toFixed(2)} kr/kg
-                              </p>
-                              <p className="text-stone-500 text-xs">
-                                {formatDKK(Math.round(cut.weight_kg * effectivePrice))}
-                              </p>
-                            </div>
-                            {cut.maturation_bonus_pct > 0 && (
-                              <span className="badge-yellow">+{cut.maturation_bonus_pct}%</span>
-                            )}
-                            {cut.is_vacuum_packed && (
-                              <span className="badge-blue">Vakuum</span>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={() => butcherItem(item, 22.5)} disabled={processing}
+                      className="btn-primary w-full py-2 text-sm">
+                      🔪 Udbén denne krop
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="card border-dashed border-stone-700 text-center py-12">
+                <p className="text-stone-500">Ingen kroppe klar til udbening</p>
+                <button onClick={() => setActiveSection("cold")} className="btn-secondary mt-4">
+                  Gå til kølelager →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PAKKERI */}
+        {activeSection === "packing" && (
+          <div className="space-y-4">
+            <div className="card border-l-4 border-l-teal-500 bg-stone-900/50">
+              <p className="text-stone-300 text-sm">
+                Udbenede delstykker vakuumpakkes her. Vakuumpakning forlænger holdbarhed og øger salgsprisen med +20%.
+              </p>
+              {!company.has_vacuum_packer && (
+                <p className="text-amber-400 text-sm mt-2">⚠️ Du har ingen vakuumpakker. Invester i udstyr for at aktivere denne funktion.</p>
+              )}
+            </div>
+            {unpackedCuts.length > 0 ? (
+              <div className="space-y-2">
+                {["premium", "standard", "industrial"].map(cat => {
+                  const items = unpackedCuts.filter(c => c.cut_category === cat);
+                  if (!items.length) return null;
+                  const catLabel = { premium: "⭐ Premium", standard: "🛒 Standard", industrial: "🏭 Industri" }[cat];
+                  return (
+                    <div key={cat}>
+                      <h3 className="text-xs font-medium text-stone-500 uppercase tracking-wide mb-2">{catLabel}</h3>
+                      {items.map(cut => (
+                        <div key={cut.id} className="card flex items-center justify-between gap-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${SEUROP_COLORS[cut.seurop_class]}`}>{cut.seurop_class}</span>
+                            <span className="text-stone-100 text-sm">{cut.cut_name}</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-right">
+                            <span className="text-stone-400 text-sm">{cut.weight_kg.toFixed(1)} kg</span>
+                            <span className="text-brand-400 text-sm">{cut.base_price_dkk_per_kg} kr/kg</span>
+                            {company.has_vacuum_packer && (
+                              <button className="btn-secondary py-1 px-3 text-xs">Pak</button>
                             )}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-
-            {butcheredCuts.length === 0 && (
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
               <div className="card border-dashed border-stone-700 text-center py-12">
-                <p className="text-stone-500">Ingen delstykker på lager</p>
-                <p className="text-stone-600 text-sm mt-1">Udbén kroppe fra kølelageret</p>
+                <p className="text-stone-500">Ingen delstykker til pakning</p>
+                <button onClick={() => setActiveSection("butchery")} className="btn-secondary mt-4">
+                  Gå til udbening →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PAKKELAGER */}
+        {activeSection === "packed" && (
+          <div className="space-y-4">
+            <div className="card border-l-4 border-l-stone-500 bg-stone-900/50">
+              <p className="text-stone-300 text-sm">
+                Færdigpakkede varer klar til levering. Vakuumpakkede varer har +20% i salgspris.
+              </p>
+            </div>
+            {vacuumCuts.length > 0 ? (
+              <div className="space-y-2">
+                {vacuumCuts.map(cut => (
+                  <div key={cut.id} className="card flex items-center justify-between gap-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${SEUROP_COLORS[cut.seurop_class]}`}>{cut.seurop_class}</span>
+                      <span className="text-stone-100 text-sm">{cut.cut_name}</span>
+                      <span className="badge-blue">Vakuum</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-brand-400 text-sm font-medium">
+                        {(cut.base_price_dkk_per_kg * 1.2).toFixed(2)} kr/kg
+                      </p>
+                      <p className="text-stone-500 text-xs">{cut.weight_kg.toFixed(1)} kg</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="card border-dashed border-stone-700 text-center py-12">
+                <p className="text-stone-500">Ingen pakket varer på lager</p>
               </div>
             )}
           </div>
