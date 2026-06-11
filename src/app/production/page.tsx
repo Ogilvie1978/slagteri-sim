@@ -23,6 +23,8 @@ type ColdStorageItem = {
 
 type CutDefinition = {
   id: string;
+  industry: string;
+  animal_category: string;
   cut_name: string;
   cut_category: string;
   yield_pct: number;
