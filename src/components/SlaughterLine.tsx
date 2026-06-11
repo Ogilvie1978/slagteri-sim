@@ -11,11 +11,11 @@ type Animal = {
   stress_level: number;
   ready_for_slaughter: boolean;
   status: string;
-  arrived_week?: number;
-  arrived_day?: string;
-  arrived_at?: string;
-  health_status?: string;
-  vet_checked?: boolean;
+  arrived_week: number;
+  arrived_day: string;
+  arrived_at: string;
+  health_status: string;
+  vet_checked: boolean;
 };
 
 type Props = {
