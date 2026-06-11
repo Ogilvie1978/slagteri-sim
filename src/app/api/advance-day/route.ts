@@ -42,7 +42,7 @@ export async function POST() {
 
   const DAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
   const currentDayNum = company.week_day_number || 1;
-  const isLastDay = currentDayNum >= 5 && !company.saturday_approved;
+  const isLastDay = currentDayNum === 5 && !company.saturday_approved;
   const isSaturday = currentDayNum === 6;
 
   // 1. Dyr der ankom FØR i dag er klar til slagtning
@@ -123,6 +123,58 @@ export async function POST() {
     day_started_at: new Date().toISOString(),
     saturday_approved: saturdayApproved,
   }).eq("id", company.id);
+
+  // 6. Opret market_weeks for næste uge hvis det er en ny uge
+  if (nextWeek > company.current_week) {
+    const { data: existingWeek } = await admin
+      .from("market_weeks")
+      .select("id")
+      .eq("week_number", nextWeek)
+      .single();
+
+    if (!existingWeek) {
+      // Generer nye priser med lille tilfældig variation
+      const { data: lastWeek } = await admin
+        .from("market_weeks")
+        .select("*")
+        .eq("week_number", company.current_week)
+        .single();
+
+      const vary = (val: number, pct: number) =>
+        Math.round((val * (1 + (Math.random() - 0.5) * pct)) * 100) / 100;
+
+      await admin.from("market_weeks").insert({
+        week_number: nextWeek,
+        demand_index: Math.min(130, Math.max(70, Math.round((lastWeek?.demand_index || 100) + (Math.random() - 0.5) * 20))),
+        fuel_cost_index: Math.min(130, Math.max(80, Math.round((lastWeek?.fuel_cost_index || 100) + (Math.random() - 0.5) * 10))),
+        labor_market: ["tight","normal","normal","normal","loose"][Math.floor(Math.random() * 5)],
+        week_summary: `Uge ${nextWeek}: Markedet fortsætter. Hold øje med prisudviklingen.`,
+      });
+
+      // Kopier og varier dyrepriser til ny uge
+      const { data: lastPrices } = await admin
+        .from("animal_prices")
+        .select("*")
+        .eq("week_number", company.current_week);
+
+      if (lastPrices && lastPrices.length > 0) {
+        await admin.from("animal_prices").insert(
+          lastPrices.map(p => ({
+            week_number: nextWeek,
+            industry: p.industry,
+            category: p.category,
+            category_label: p.category_label,
+            best_use: p.best_use,
+            price_dkk_per_kg: vary(p.price_dkk_per_kg, 0.08),
+            weight_min_kg: p.weight_min_kg,
+            weight_max_kg: p.weight_max_kg,
+            unit: p.unit,
+            source: "estimated",
+          }))
+        );
+      }
+    }
+  }
 
   return NextResponse.json({
     success: true,
