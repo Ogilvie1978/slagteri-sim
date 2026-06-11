@@ -1,41 +1,28 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
 
-export async function POST() {
+export async function POST(request: Request) {
   const cookieStore = await cookies();
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll(); },
-        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {}
-        },
-      },
-    }
-  );
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  // Brug service role til at skrive data
+  // Brug service role til alt - vi validerer via company_id i body
   const admin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
+  // Hent company_id fra request body
+  let companyId: string | null = null;
+  try {
+    const body = await request.json();
+    companyId = body.companyId;
+  } catch {}
+
+  if (!companyId) return NextResponse.json({ error: "Missing companyId" }, { status: 400 });
+
   const { data: company } = await admin
     .from("companies")
     .select("*")
-    .eq("player_id", user.id)
+    .eq("id", companyId)
     .single();
 
   if (!company) return NextResponse.json({ error: "No company" }, { status: 404 });
