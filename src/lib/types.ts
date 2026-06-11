@@ -41,6 +41,10 @@ export type Company = {
   // Setup
   is_operational: boolean;
   setup_completed_day: string | null;
+  // Produktion
+  cold_storage_capacity_kg: number;
+  has_vacuum_packer: boolean;
+  has_butchery: boolean;
   created_at: string;
 };
 
