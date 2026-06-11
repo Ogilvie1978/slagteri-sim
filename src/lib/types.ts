@@ -10,11 +10,11 @@ export const INDUSTRY_CONFIG: Record<Industry, {
   label: string;
   emoji: string;
   animal: string;
-  priceKey: "pig_price" | "cattle_price" | "lamb_price" | "chicken_price";
+  priceKey: string;
 }> = {
-  svineslagteri:    { label: "Svineslagteri",    emoji: "🐷", animal: "Svinekød",   priceKey: "pig_price" },
-  kreaturslagteri:  { label: "Kreaturslagteri",  emoji: "🐄", animal: "Oksekød",    priceKey: "cattle_price" },
-  lammeslagteri:    { label: "Lammeslagteri",    emoji: "🐑", animal: "Lammekød",   priceKey: "lamb_price" },
+  svineslagteri:    { label: "Svineslagteri",    emoji: "🐷", animal: "Svinekød",    priceKey: "pig_price" },
+  kreaturslagteri:  { label: "Kreaturslagteri",  emoji: "🐄", animal: "Oksekød",     priceKey: "cattle_price" },
+  lammeslagteri:    { label: "Lammeslagteri",    emoji: "🐑", animal: "Lammekød",    priceKey: "lamb_price" },
   kyllingslagteri:  { label: "Kyllingslagteri",  emoji: "🐔", animal: "Kyllingekød", priceKey: "chicken_price" },
 };
 
@@ -33,16 +33,17 @@ export type Company = {
   capacity_kg: number;
   compliance_score: number;
   current_week: number;
+  // Dag-system
+  current_day: string;
+  week_day_number: number;
+  day_started_at: string;
+  saturday_approved: boolean;
   created_at: string;
 };
 
 export type MarketWeek = {
   id: string;
   week_number: number;
-  pig_price: number;
-  cattle_price: number;
-  lamb_price: number;
-  chicken_price: number;
   demand_index: number;
   fuel_cost_index: number;
   labor_market: "tight" | "normal" | "loose";
@@ -50,42 +51,99 @@ export type MarketWeek = {
   created_at: string;
 };
 
-export type GameEvent = {
+export type AnimalPrice = {
   id: string;
   week_number: number;
-  type: "market" | "regulation" | "weather" | "scandal" | "opportunity" | "crisis";
-  title: string;
-  description: string;
-  severity: "low" | "medium" | "high";
-  effect: Record<string, number> | null;
-  affects_all: boolean;
+  industry: string;
+  category: string;
+  category_label: string;
+  best_use: string;
+  price_eur_per_100kg: number | null;
+  price_dkk_per_kg: number;
+  weight_min_kg: number | null;
+  weight_max_kg: number | null;
+  unit: string;
+  source: string;
   created_at: string;
 };
 
-export type Action = {
+export type Buyer = {
   id: string;
-  company_id: string;
-  week_number: number;
+  name: string;
   type: string;
-  payload: Record<string, unknown>;
-  result: Record<string, unknown> | null;
-  ai_narrative: string | null;
-  created_at: string;
+  description: string;
+  logo_emoji: string;
+  min_compliance: number;
+  accepted_classes: string[];
+  min_volume_kg: number;
+  price_bonus_pct: number;
+  contract_duration_weeks: number;
+  penalty_dkk: number;
+  active: boolean;
 };
 
 export type Contract = {
   id: string;
   company_id: string;
-  customer_name: string;
-  customer_type: "supermarket" | "restaurant" | "export" | "retail";
-  product_type: string;
-  volume_kg: number;
-  price_per_kg: number;
-  duration_weeks: number;
+  buyer_id: string;
+  animal_category: string;
+  volume_kg_per_week: number;
+  price_bonus_pct: number;
   week_start: number;
   week_end: number;
   active: boolean;
-  compliance_req: number;
+  penalty_dkk: number;
+  created_at: string;
+};
+
+export type RawMaterialPurchase = {
+  id: string;
+  company_id: string;
+  week_number: number;
+  animal_category: string;
+  quantity_kg: number;
+  quantity_animals: number | null;
+  price_per_kg: number;
+  total_cost: number;
+  supplier_name: string;
+  is_weekend: boolean;
+  created_at: string;
+};
+
+export type SlaughterResult = {
+  id: string;
+  company_id: string;
+  week_number: number;
+  total_input_kg: number;
+  animal_category: string;
+  class_s_kg: number;
+  class_e_kg: number;
+  class_u_kg: number;
+  class_r_kg: number;
+  class_o_kg: number;
+  class_p_kg: number;
+  guaranteed_revenue: number;
+  contract_revenue: number;
+  total_revenue: number;
+  narrative: string | null;
+  created_at: string;
+};
+
+export type MarketEvent = {
+  id: string;
+  week_number: number;
+  type: string;
+  title: string;
+  description: string;
+  severity: string;
+  affects_industry: string | null;
+  price_delta_pct: number;
+  demand_delta: number;
+  opportunity_buyer: string | null;
+  opportunity_bonus_pct: number;
+  opportunity_volume_kg: number;
+  opportunity_weeks: number;
+  affects_all: boolean;
   created_at: string;
 };
 
@@ -108,14 +166,16 @@ export type WeekResult = {
   company_id: string;
   week_number: number;
   revenue: number;
-  costs: number;
+  raw_material_cost: number;
+  salary_cost: number;
+  interest_cost: number;
+  other_costs: number;
   profit: number;
   cash_end: number;
   credit_used_end: number;
-  kg_processed: number;
-  kg_sold: number;
   reputation_end: number;
   compliance_end: number;
+  kg_slaughtered: number;
   narrative: string | null;
   created_at: string;
 };
