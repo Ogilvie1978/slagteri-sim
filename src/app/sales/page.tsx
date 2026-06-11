@@ -104,7 +104,7 @@ export default function SalesPage() {
     setSelectedIds(prev => {
       const allIn = ids.every(id => prev.includes(id));
       if (allIn) return prev.filter(id => !ids.includes(id));
-      return [...new Set([...prev, ...ids])];
+      return [...prev, ...ids.filter(id => !prev.includes(id))];
     });
   }
 
