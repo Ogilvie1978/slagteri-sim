@@ -4,11 +4,26 @@ export type Player = {
   created_at: string;
 };
 
+export type Industry = "svineslagteri" | "kreaturslagteri" | "lammeslagteri" | "kyllingslagteri";
+
+export const INDUSTRY_CONFIG: Record<Industry, {
+  label: string;
+  emoji: string;
+  animal: string;
+  priceKey: "pig_price" | "cattle_price" | "lamb_price" | "chicken_price";
+}> = {
+  svineslagteri:    { label: "Svineslagteri",    emoji: "🐷", animal: "Svinekød",   priceKey: "pig_price" },
+  kreaturslagteri:  { label: "Kreaturslagteri",  emoji: "🐄", animal: "Oksekød",    priceKey: "cattle_price" },
+  lammeslagteri:    { label: "Lammeslagteri",    emoji: "🐑", animal: "Lammekød",   priceKey: "lamb_price" },
+  kyllingslagteri:  { label: "Kyllingslagteri",  emoji: "🐔", animal: "Kyllingekød", priceKey: "chicken_price" },
+};
+
 export type Company = {
   id: string;
   player_id: string;
   name: string;
   region: string;
+  industry: Industry;
   cash: number;
   equity: number;
   credit_limit: number;
@@ -27,6 +42,7 @@ export type MarketWeek = {
   pig_price: number;
   cattle_price: number;
   lamb_price: number;
+  chicken_price: number;
   demand_index: number;
   fuel_cost_index: number;
   labor_market: "tight" | "normal" | "loose";
