@@ -6,9 +6,30 @@ import { formatDKK } from "@/lib/utils";
 import type { Company, MarketWeek } from "@/lib/types";
 import { INDUSTRY_CONFIG } from "@/lib/types";
 
+type AnimalPrice = {
+  category: string;
+  category_label: string;
+  best_use: string;
+  price_dkk_per_kg: number;
+};
+
+type Buyer = {
+  id: string;
+  name: string;
+  type: string;
+  logo_emoji: string;
+  description: string;
+  min_compliance: number;
+  price_bonus_pct: number;
+  accepted_classes: string[];
+  min_volume_kg: number;
+};
+
 export default function DashboardPage() {
   const [company, setCompany] = useState<Company | null>(null);
   const [market, setMarket] = useState<MarketWeek | null>(null);
+  const [prices, setPrices] = useState<AnimalPrice[]>([]);
+  const [buyers, setBuyers] = useState<Buyer[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const supabase = createClient();
@@ -32,8 +53,23 @@ export default function DashboardPage() {
         .select("*")
         .eq("week_number", co.current_week)
         .single();
-
       setMarket(mw);
+
+      const { data: ap } = await supabase
+        .from("animal_prices")
+        .select("category, category_label, best_use, price_dkk_per_kg")
+        .eq("week_number", co.current_week)
+        .eq("industry", co.industry)
+        .order("price_dkk_per_kg", { ascending: false });
+      setPrices(ap || []);
+
+      const { data: buyerData } = await supabase
+        .from("buyers")
+        .select("*")
+        .eq("active", true)
+        .order("type");
+      setBuyers(buyerData || []);
+
       setLoading(false);
     }
     load();
@@ -47,10 +83,14 @@ export default function DashboardPage() {
 
   if (!company) return null;
 
-  const ind = INDUSTRY_CONFIG[company.industry] ?? INDUSTRY_CONFIG["svineslagteri"];
+  const ind = INDUSTRY_CONFIG[company.industry] ?? INDUSTRY_CONFIG["kreaturslagteri"];
   const liquidityTotal = company.cash + (company.credit_limit - company.credit_used);
   const weeklyInterest = Math.floor(company.credit_used * company.credit_rate / 52);
-  const relevantPrice = market ? (market as Record<string, unknown>)[ind.priceKey] as number : null;
+
+  const availableBuyers = buyers.filter(b =>
+    b.type === "guaranteed" ||
+    company.compliance_score >= b.min_compliance
+  );
 
   return (
     <div className="min-h-screen bg-stone-950">
@@ -111,16 +151,29 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Marked – kun relevant pris */}
-        {market && relevantPrice && (
+        {/* Råvarepriser */}
+        {prices.length > 0 && (
           <div>
-            <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Aktuel råvarepris</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="stat-card border-brand-500/30">
-                <span className="stat-label">{ind.emoji} {ind.animal}</span>
-                <span className="stat-value text-brand-400">{relevantPrice} kr/kg</span>
-                <span className="text-xs text-stone-600">levende vægt</span>
-              </div>
+            <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
+              Aktuelle råvarepriser · {ind.label}
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {prices.map(p => (
+                <div key={p.category} className="stat-card">
+                  <span className="stat-label">{p.category_label}</span>
+                  <span className="stat-value text-brand-400">{p.price_dkk_per_kg} kr/kg</span>
+                  <span className="text-xs text-stone-600">{p.best_use}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Markedsforhold */}
+        {market && (
+          <div>
+            <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Markedsforhold</h2>
+            <div className="grid grid-cols-3 gap-3">
               <div className="stat-card">
                 <span className="stat-label">Efterspørgsel</span>
                 <span className={`stat-value ${market.demand_index >= 100 ? "text-green-400" : "text-red-400"}`}>
@@ -130,14 +183,60 @@ export default function DashboardPage() {
               </div>
               <div className="stat-card">
                 <span className="stat-label">Arbejdsmarked</span>
-                <span className="stat-value capitalize">{
+                <span className="stat-value">{
                   market.labor_market === "tight" ? "Stramt" :
                   market.labor_market === "normal" ? "Normalt" : "Løst"
                 }</span>
               </div>
+              <div className="stat-card">
+                <span className="stat-label">Brændstof</span>
+                <span className={`stat-value ${market.fuel_cost_index > 100 ? "text-red-400" : "text-green-400"}`}>
+                  {market.fuel_cost_index}
+                </span>
+                <span className="text-xs text-stone-600">indeks</span>
+              </div>
             </div>
           </div>
         )}
+
+        {/* Tilgængelige købere */}
+        <div>
+          <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
+            Tilgængelige købere
+            <span className="ml-2 text-stone-600 normal-case font-normal">
+              ({availableBuyers.length} af {buyers.length})
+            </span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {availableBuyers.map(b => (
+              <div key={b.id} className={`card flex items-start gap-3 ${b.type === "guaranteed" ? "border-stone-700" : "border-stone-800"}`}>
+                <span className="text-2xl mt-0.5">{b.logo_emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-stone-100 text-sm">{b.name}</span>
+                    {b.price_bonus_pct > 0 && (
+                      <span className="badge-green">+{b.price_bonus_pct}%</span>
+                    )}
+                    {b.type === "guaranteed" && (
+                      <span className="badge-blue">Garanteret aftager</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-stone-500 mt-0.5">{b.description}</p>
+                  {b.min_volume_kg > 0 && (
+                    <p className="text-xs text-stone-600 mt-1">
+                      Min. {b.min_volume_kg.toLocaleString("da-DK")} kg/uge · Compliance {b.min_compliance}+
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          {buyers.length > availableBuyers.length && (
+            <p className="text-xs text-stone-600 mt-2">
+              {buyers.length - availableBuyers.length} købere kræver højere compliance score for at blive låst op.
+            </p>
+          )}
+        </div>
 
         {/* Virksomhedsstatus */}
         <div>
