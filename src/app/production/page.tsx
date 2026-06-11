@@ -373,48 +373,60 @@ export default function ProductionPage() {
               </div>
             )}
 
-            {readyForSlaughter.length > 0 && (
-              <div>
-                <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
-                  Klar til slagtning ({readyForSlaughter.length})
-                </h2>
-                <div className="space-y-3">
-                  {readyForSlaughter.map(a => {
-                    const seurop = getSEUROPExpectation(a.animal_category, a.stress_level);
-                    return (
-                      <div key={a.id} className="card">
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <span className="text-stone-100 font-medium">{ANIMAL_LABELS[a.animal_category]}</span>
-                            <span className="text-stone-500 text-xs ml-2">{a.quantity} styk · {a.actual_weight_kg.toFixed(0)} kg/styk</span>
+            {readyForSlaughter.length > 0 && (() => {
+              // Gruppér per kategori
+              const grouped = readyForSlaughter.reduce((acc, a) => {
+                if (!acc[a.animal_category]) acc[a.animal_category] = {
+                  animals: [], count: 0, totalKg: 0, avgStress: 0, vetChecked: 0
+                };
+                acc[a.animal_category].animals.push(a);
+                acc[a.animal_category].count += a.quantity;
+                acc[a.animal_category].totalKg += a.actual_weight_kg * a.quantity;
+                acc[a.animal_category].avgStress += a.stress_level;
+                if (a.vet_checked) acc[a.animal_category].vetChecked++;
+                return acc;
+              }, {} as Record<string, { animals: typeof readyForSlaughter; count: number; totalKg: number; avgStress: number; vetChecked: number }>);
+
+              return (
+                <div>
+                  <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
+                    Klar til slagtning ({readyForSlaughter.length} dyr)
+                  </h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {Object.entries(grouped).map(([cat, data]) => {
+                      const avgStress = Math.round(data.avgStress / data.animals.length);
+                      const seurop = getSEUROPExpectation(cat, avgStress);
+                      const avgKg = Math.round(data.totalKg / data.count);
+                      const carcassKg = Math.round(data.totalKg * 0.55);
+                      return (
+                        <div key={cat} className="card">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-stone-100 font-medium text-sm">{ANIMAL_LABELS[cat]}</span>
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${avgStress > 60 ? "badge-red" : "badge-green"}`}>
+                              {avgStress > 60 ? "Stresset" : "Rolig"}
+                            </span>
                           </div>
-                          <div className="flex gap-2">
-                            {a.stress_level > 60 && <span className="badge-red">Stresset</span>}
-                            {a.stress_level <= 60 && <span className="badge-green">Rolig</span>}
-                            {a.vet_checked && <span className="badge-green">Dyrlæge ✓</span>}
+                          <div className="space-y-0.5 mb-2">
+                            <p className="text-stone-500 text-xs">{data.count} dyr · ~{avgKg} kg/styk</p>
+                            <p className="text-stone-500 text-xs">~{carcassKg} kg slagtevægt</p>
+                            {data.vetChecked > 0 && <p className="text-xs text-green-400">Dyrlæge ✓ {data.vetChecked}/{data.animals.length}</p>}
+                          </div>
+                          <div className="flex gap-1 flex-wrap mb-2">
+                            {seurop.map(cls => (
+                              <div key={cls.class} className="flex items-center gap-0.5">
+                                <span className={`text-xs font-bold px-1 py-0.5 rounded border ${SEUROP_COLORS[cls.class]}`}>{cls.class}</span>
+                                <span className="text-xs text-stone-600">{cls.pct}%</span>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                        <div className="flex gap-2 flex-wrap mb-3">
-                          {seurop.map(cls => (
-                            <div key={cls.class} className="flex items-center gap-1">
-                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${SEUROP_COLORS[cls.class]}`}>{cls.class}</span>
-                              <span className="text-xs text-stone-500">~{cls.pct}%</span>
-                            </div>
-                          ))}
-                        </div>
-                        <button
-                          onClick={() => slaughterAnimal(a, 22.5)}
-                          disabled={processing}
-                          className="btn-primary w-full py-2 text-sm"
-                        >
-                          ⚙️ Send til slagtelinje
-                        </button>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-stone-600 mt-2">Gå til Slagtelinje for at starte slagtning</p>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {stableAnimals.length === 0 && (
               <div className="card border-dashed border-stone-700 text-center py-12">
