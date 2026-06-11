@@ -50,6 +50,17 @@ export type Company = {
   slaughter_started_at: string | null;
   slaughter_queue: any[];
   slaughter_speed_per_min: number;
+  total_revenue: number;
+  total_cogs: number;
+  total_salary_paid: number;
+  total_interest_paid: number;
+  vat_collected: number;
+  vat_paid: number;
+  vat_due: number;
+  last_vat_settlement_week: number;
+  tax_aconto: number;
+  current_week_revenue: number;
+  current_week_cogs: number;
   created_at: string;
 };
 
