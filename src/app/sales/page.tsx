@@ -14,6 +14,7 @@ type ColdItem = {
   status: string;
   maturation_bonus_pct: number;
   destination: string;
+  expires_at: string | null;
 };
 
 type CutItem = {
@@ -27,6 +28,7 @@ type CutItem = {
   maturation_bonus_pct: number;
   is_vacuum_packed: boolean;
   status: string;
+  expires_at: string | null;
 };
 
 type Buyer = {
@@ -56,6 +58,23 @@ const SEUROP_COLORS: Record<string, string> = {
 };
 
 const BASE_PRICE = 22.5;
+
+function daysUntilExpiry(expiresAt: string | null): number | null {
+  if (!expiresAt) return null;
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function ExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
+  const days = daysUntilExpiry(expiresAt);
+  if (days === null) return null;
+  if (days <= 0) return <span className="text-xs text-red-400 font-medium">Udløbet!</span>;
+  if (days <= 2) return <span className="text-xs text-red-400 font-medium">{days}d tilbage</span>;
+  if (days <= 4) return <span className="text-xs text-amber-400">{days}d tilbage</span>;
+  return <span className="text-xs text-stone-500">{days}d</span>;
+}
+
+
 
 export default function SalesPage() {
   const [company, setCompany] = useState<Company | null>(null);
@@ -162,12 +181,15 @@ export default function SalesPage() {
   }, {} as Record<string, { animal_category: string; seurop_class: string; items: ColdItem[]; totalKg: number }>);
 
   const groupedCuts = cutItems.reduce((acc, item) => {
-    const key = `${item.cut_name}-${item.seurop_class}`;
-    if (!acc[key]) acc[key] = { ...item, items: [] as CutItem[], totalKg: 0 };
+    const key = item.cut_name;
+    if (!acc[key]) acc[key] = { ...item, items: [] as CutItem[], totalKg: 0, classes: [] as string[], minExpiry: item.expires_at };
     acc[key].items.push(item);
     acc[key].totalKg += item.weight_kg;
+    if (!acc[key].classes.includes(item.seurop_class)) acc[key].classes.push(item.seurop_class);
+    // Hold tidligste udløbsdato
+    if (item.expires_at && (!acc[key].minExpiry || item.expires_at < acc[key].minExpiry)) acc[key].minExpiry = item.expires_at;
     return acc;
-  }, {} as Record<string, CutItem & { items: CutItem[]; totalKg: number }>);
+  }, {} as Record<string, CutItem & { items: CutItem[]; totalKg: number; classes: string[] }>);
 
   return (
     <div className="min-h-screen bg-stone-950">
@@ -253,7 +275,10 @@ export default function SalesPage() {
                   <p className="text-stone-100 text-sm font-medium leading-tight">{ANIMAL_LABELS[group.animal_category]}</p>
                   <p className="text-stone-500 text-xs mt-0.5">{group.items.length} kroppe · {Math.round(group.totalKg)} kg</p>
                   <p className="text-brand-400 font-medium text-sm mt-1">{formatDKK(val)}</p>
-                  {wrongClass && <p className="text-red-400 text-xs">Omdømme -5</p>}
+                  <div className="flex items-center justify-between mt-1">
+                    <ExpiryBadge expiresAt={group.items[0]?.expires_at ?? null} />
+                    {wrongClass && <p className="text-red-400 text-xs">Omdømme -5</p>}
+                  </div>
                 </div>
               );
             })}
@@ -284,19 +309,23 @@ export default function SalesPage() {
                       return (
                         <div key={key} onClick={() => selectGroup(group.items.map(i => i.id))}
                           className={`card cursor-pointer transition-all p-3 ${allSel ? "border-brand-500 bg-stone-800/50" : "hover:border-stone-600"}`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${SEUROP_COLORS[group.seurop_class]}`}>{group.seurop_class}</span>
-                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${allSel ? "bg-brand-500 border-brand-500" : "border-stone-600"}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex gap-1 flex-wrap">
+                              {(group as any).classes?.map((cls: string) => (
+                                <span key={cls} className={`text-xs font-bold px-1 py-0.5 rounded border ${SEUROP_COLORS[cls]}`}>{cls}</span>
+                              ))}
+                            </div>
+                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${allSel ? "bg-brand-500 border-brand-500" : "border-stone-600"}`}>
                               {allSel && <span className="text-white text-xs leading-none">✓</span>}
                             </div>
                           </div>
-                          <p className="text-stone-100 text-sm font-medium leading-tight">{group.cut_name}</p>
-                          <p className="text-stone-500 text-xs mt-0.5">{group.totalKg.toFixed(1)} kg</p>
-                          <p className="text-brand-400 font-medium text-sm mt-1">{formatDKK(val)}</p>
-                          <div className="flex gap-1 mt-1 flex-wrap">
-                            {group.maturation_bonus_pct > 0 && <span className="badge-yellow text-xs">+{group.maturation_bonus_pct}%</span>}
-                            {group.is_vacuum_packed && <span className="badge-blue text-xs">Vakuum</span>}
+                          <p className="text-stone-100 text-sm font-medium leading-tight mt-1">{group.cut_name}</p>
+                          <p className="text-stone-500 text-xs mt-0.5">{group.totalKg.toFixed(1)} kg · {group.items.length} stk</p>
+                          <div className="flex items-center justify-between mt-1">
+                            <p className="text-brand-400 font-medium text-sm">{formatDKK(val)}</p>
+                            <ExpiryBadge expiresAt={group.items[0]?.expires_at ?? null} />
                           </div>
+                          {group.is_vacuum_packed && <span className="badge-blue text-xs mt-1">Vakuum +20%</span>}
                         </div>
                       );
                     })}
