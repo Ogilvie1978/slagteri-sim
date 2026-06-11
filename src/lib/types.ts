@@ -45,6 +45,8 @@ export type Company = {
   cold_storage_capacity_kg: number;
   has_vacuum_packer: boolean;
   has_butchery: boolean;
+  stable_capacity_animals: number;
+  stable_current_animals: number;
   created_at: string;
 };
 
