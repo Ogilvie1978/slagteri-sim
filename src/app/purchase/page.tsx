@@ -136,7 +136,13 @@ function PurchaseContent() {
 
     await supabase
       .from("companies")
-      .update({ cash: company.cash - Math.round(totalEstimatedCost) })
+      .update((() => {
+        const cost = Math.round(totalEstimatedCost);
+        const newCash = Math.max(0, company.cash - cost);
+        const creditNeeded = Math.max(0, cost - company.cash);
+        const newCreditUsed = Math.min(company.credit_limit, (company.credit_used || 0) + creditNeeded);
+        return { cash: newCash, credit_used: newCreditUsed };
+      })())
       .eq("id", company.id);
 
     router.push("/dashboard");
@@ -151,7 +157,8 @@ function PurchaseContent() {
   if (!company) return null;
 
   const ind = INDUSTRY_CONFIG[company.industry] ?? INDUSTRY_CONFIG["kreaturslagteri"];
-  const canAfford = totalEstimatedCost <= company.cash;
+  const totalAvailable = company.cash + (company.credit_limit - (company.credit_used || 0));
+  const canAfford = totalEstimatedCost <= totalAvailable;
 
   return (
     <div className="min-h-screen bg-stone-950">
