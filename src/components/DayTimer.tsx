@@ -76,15 +76,7 @@ export default function DayTimer({
 
   async function advanceToNextDay() {
     setAdvancingDay(true);
-    const nextDayNum = weekDayNumber + 1;
-    const nextDay = DAYS[nextDayNum - 1];
-
-    await supabase.from("companies").update({
-      current_day: nextDay,
-      week_day_number: nextDayNum,
-      day_started_at: new Date().toISOString(),
-    }).eq("id", companyId);
-
+    await fetch("/api/advance-day", { method: "POST" });
     setAdvancingDay(false);
     onDayEnd();
     router.refresh();
@@ -110,13 +102,7 @@ export default function DayTimer({
 
   async function endWeek() {
     setAdvancingDay(true);
-    await supabase.from("companies").update({
-      current_day: "Mandag",
-      week_day_number: 1,
-      current_week: currentWeek + 1,
-      day_started_at: new Date().toISOString(),
-      saturday_approved: false,
-    }).eq("id", companyId);
+    await fetch("/api/advance-day", { method: "POST" });
     setShowEndDayModal(false);
     setAdvancingDay(false);
     onDayEnd();
