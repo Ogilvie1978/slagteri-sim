@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(request: Request) {
-  const cookieStore = await cookies();
-
   // Brug service role til alt - vi validerer via company_id i body
   const admin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
