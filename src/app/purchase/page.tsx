@@ -146,6 +146,40 @@ function PurchaseContent() {
       })())
       .eq("id", company.id);
 
+    // Registrer dyr i stalden
+    const stableItems = items.filter(i => i.unit === "styk" && i.quantity > 0);
+    if (stableItems.length > 0) {
+      const stableRows = stableItems.flatMap(item => {
+        const min = item.weight_min_kg || 500;
+        const max = item.weight_max_kg || 650;
+        // Opret en række per dyr med tilfældig vægt
+        return Array.from({ length: item.quantity }, () => ({
+          company_id: company!.id,
+          animal_category: item.category,
+          quantity: 1,
+          actual_weight_kg: Math.round((min + Math.random() * (max - min)) * 10) / 10,
+          arrived_week: company!.current_week,
+          arrived_day: company!.current_day || "Mandag",
+          ready_for_slaughter: false,
+          health_status: "ok",
+          vet_checked: false,
+          stress_level: Math.floor(Math.random() * 30) + 10,
+          status: "resting",
+        }));
+      });
+
+      // Indsæt i batches af 50 for ikke at overbelaste
+      for (let i = 0; i < stableRows.length; i += 50) {
+        await supabase.from("stable_animals").insert(stableRows.slice(i, i + 50));
+      }
+
+      // Opdater stald-tæller
+      const totalAnimals = stableItems.reduce((s, i) => s + i.quantity, 0);
+      await supabase.from("companies").update({
+        stable_current_animals: (company!.stable_current_animals || 0) + totalAnimals
+      }).eq("id", company!.id);
+    }
+
     router.push("/dashboard");
   }
 
