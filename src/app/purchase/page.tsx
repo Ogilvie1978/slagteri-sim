@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatDKK } from "@/lib/utils";
+import Navigation from "@/components/Navigation";
 import type { Company } from "@/lib/types";
 import { INDUSTRY_CONFIG } from "@/lib/types";
 import { Suspense } from "react";
@@ -162,6 +163,7 @@ function PurchaseContent() {
 
   return (
     <div className="min-h-screen bg-stone-950">
+      <Navigation />
       <header className="border-b border-stone-800 bg-stone-900/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
