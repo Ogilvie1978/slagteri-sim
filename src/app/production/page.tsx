@@ -122,6 +122,7 @@ export default function ProductionPage() {
   const [selectedColdItem, setSelectedColdItem] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [slaughterers, setSlaughterers] = useState(5);
   const router = useRouter();
   const supabase = createClient();
 
@@ -154,6 +155,15 @@ export default function ProductionPage() {
     setColdStorage(coldRes.data || []);
     setButcheredCuts(cutsRes.data || []);
     setCutDefs(defRes.data || []);
+    // Hent antal slagtere
+    const { data: empData } = await supabase
+      .from("employees")
+      .select("id")
+      .eq("company_id", co.id)
+      .eq("department", "slagteri")
+      .eq("active", true);
+    setSlaughterers(Math.max(5, (empData || []).length));
+
     setLoading(false);
   }, []);
 
@@ -422,8 +432,8 @@ export default function ProductionPage() {
           <SlaughterLine
             readyAnimals={readyForSlaughter}
             company={company}
-            onSlaughter={slaughterAnimal}
-            processing={processing}
+            slaughterers={slaughterers}
+            onDone={load}
           />
         )}
 
