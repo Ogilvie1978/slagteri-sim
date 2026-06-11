@@ -423,7 +423,12 @@ export default function ProductionPage() {
                       );
                     })}
                   </div>
-                  <p className="text-xs text-stone-600 mt-2">Gå til Slagtelinje for at starte slagtning</p>
+                  <button
+                    onClick={() => setActiveSection("slaughter")}
+                    className="btn-primary w-full py-2.5 mt-2"
+                  >
+                    ⚙️ Gå til slagtelinje og start slagtning →
+                  </button>
                 </div>
               );
             })()}
