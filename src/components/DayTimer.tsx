@@ -160,6 +160,15 @@ export default function DayTimer({
             Dagen slutter snart!
           </p>
         )}
+
+        {/* TEST KNAP – fjernes i produktion */}
+        <button
+          onClick={handleDayEnd}
+          disabled={advancingDay}
+          className="w-full mt-3 py-1.5 text-xs text-stone-600 hover:text-stone-400 border border-stone-800 hover:border-stone-700 rounded-lg transition-colors"
+        >
+          {advancingDay ? "Afslutter..." : "⏩ Afslut dag (test)"}
+        </button>
       </div>
 
       {/* Fredag modal */}
