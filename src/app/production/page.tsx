@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Navigation from "@/components/Navigation";
 import { formatDKK } from "@/lib/utils";
 import type { Company } from "@/lib/types";
+import SlaughterLine from "@/components/SlaughterLine";
 
 type StableAnimal = {
   id: string;
@@ -415,42 +416,12 @@ export default function ProductionPage() {
 
         {/* SLAGTELINJE */}
         {activeSection === "slaughter" && (
-          <div className="space-y-4">
-            <div className="card border-l-4 border-l-coral-500 bg-stone-900/50">
-              <p className="text-stone-300 text-sm">
-                Slagtelinjen behandler dyr der er klar fra stalden. Efter slagtning klassificeres kroppene efter SEUROP og sendes i kølerummet.
-              </p>
-            </div>
-            {readyForSlaughter.length > 0 ? (
-              <div className="space-y-3">
-                <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide">
-                  Klar til slagtning ({readyForSlaughter.length})
-                </h2>
-                {readyForSlaughter.map(a => (
-                  <div key={a.id} className="card">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-stone-100 font-medium">{ANIMAL_LABELS[a.animal_category]}</span>
-                        <span className="text-stone-500 text-xs ml-2">{a.quantity} styk</span>
-                      </div>
-                      <button
-                        onClick={() => slaughterAnimal(a, 22.5)}
-                        disabled={processing}
-                        className="btn-primary py-2 text-sm"
-                      >
-                        Slagt nu
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="card border-dashed border-stone-700 text-center py-12">
-                <p className="text-stone-500">Ingen dyr klar til slagtning</p>
-                <p className="text-stone-600 text-sm mt-1">Dyr skal hvile minimum 1 dag i stalden</p>
-              </div>
-            )}
-          </div>
+          <SlaughterLine
+            readyAnimals={readyForSlaughter}
+            company={company}
+            onSlaughter={slaughterAnimal}
+            processing={processing}
+          />
         )}
 
         {/* KØLELAGER */}
