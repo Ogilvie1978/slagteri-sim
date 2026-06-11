@@ -1,34 +1,56 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import { formatDKK } from "@/lib/utils";
 import type { Company, MarketWeek } from "@/lib/types";
-import LogoutButton from "@/components/LogoutButton";
 
-export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+export default function DashboardPage() {
+  const [company, setCompany] = useState<Company | null>(null);
+  const [market, setMarket] = useState<MarketWeek | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const supabase = createClient();
 
-  const { data: company } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("player_id", user.id)
-    .single() as { data: Company | null };
+  useEffect(() => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push("/login"); return; }
 
-  if (!company) redirect("/onboarding");
+      const { data: co } = await supabase
+        .from("companies")
+        .select("*")
+        .eq("player_id", user.id)
+        .single();
 
-  const { data: market } = await supabase
-    .from("market_weeks")
-    .select("*")
-    .eq("week_number", company.current_week)
-    .single() as { data: MarketWeek | null };
+      if (!co) { router.push("/onboarding"); return; }
+      setCompany(co);
+
+      const { data: mw } = await supabase
+        .from("market_weeks")
+        .select("*")
+        .eq("week_number", co.current_week)
+        .single();
+
+      setMarket(mw);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <p className="text-stone-500">Indlæser...</p>
+    </div>
+  );
+
+  if (!company) return null;
 
   const liquidityTotal = company.cash + (company.credit_limit - company.credit_used);
   const weeklyInterest = Math.floor(company.credit_used * company.credit_rate / 52);
 
   return (
     <div className="min-h-screen bg-stone-950">
-      {/* Header */}
       <header className="border-b border-stone-800 bg-stone-900/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -40,22 +62,21 @@ export default async function DashboardPage() {
           </div>
           <div className="flex items-center gap-3">
             <span className="badge-blue">Omdømme: {company.reputation}/100</span>
-            <LogoutButton />
+            <button onClick={async () => { await supabase.auth.signOut(); router.push("/login"); }}
+              className="text-sm text-stone-500 hover:text-stone-300 transition-colors">
+              Log ud
+            </button>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
-
-        {/* Ugeoversigt */}
         {market?.week_summary && (
           <div className="card border-l-4 border-l-brand-500">
             <p className="text-xs text-brand-400 font-medium mb-2 uppercase tracking-wide">Ugens nyheder · Uge {company.current_week}</p>
             <p className="text-stone-300 leading-relaxed">{market.week_summary}</p>
           </div>
         )}
-
-        {/* Økonomi */}
         <div>
           <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Økonomi</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -82,8 +103,6 @@ export default async function DashboardPage() {
             </div>
           </div>
         </div>
-
-        {/* Marked */}
         {market && (
           <div>
             <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Aktuelle priser</h2>
@@ -103,8 +122,6 @@ export default async function DashboardPage() {
             </div>
           </div>
         )}
-
-        {/* Virksomhedsstatus */}
         <div>
           <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Virksomhed</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -136,20 +153,17 @@ export default async function DashboardPage() {
             </div>
           </div>
         </div>
-
-        {/* Afslut uge knap */}
         <div className="card bg-stone-900 border-stone-700">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-stone-100">Klar til næste uge?</h3>
               <p className="text-sm text-stone-500 mt-0.5">Afslut uge {company.current_week} og se hvad der sker</p>
             </div>
-            <button className="btn-primary" onClick={() => {}}>
+            <button className="btn-primary">
               Afslut uge {company.current_week} →
             </button>
           </div>
         </div>
-
       </main>
     </div>
   );
