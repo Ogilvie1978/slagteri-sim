@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { formatDKK } from "@/lib/utils";
 import type { Company, MarketWeek } from "@/lib/types";
+import { INDUSTRY_CONFIG } from "@/lib/types";
 
 export default function DashboardPage() {
   const [company, setCompany] = useState<Company | null>(null);
@@ -46,18 +47,20 @@ export default function DashboardPage() {
 
   if (!company) return null;
 
+  const ind = INDUSTRY_CONFIG[company.industry] ?? INDUSTRY_CONFIG["svineslagteri"];
   const liquidityTotal = company.cash + (company.credit_limit - company.credit_used);
   const weeklyInterest = Math.floor(company.credit_used * company.credit_rate / 52);
+  const relevantPrice = market ? (market as Record<string, unknown>)[ind.priceKey] as number : null;
 
   return (
     <div className="min-h-screen bg-stone-950">
       <header className="border-b border-stone-800 bg-stone-900/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">🥩</span>
+            <span className="text-2xl">{ind.emoji}</span>
             <div>
               <h1 className="font-bold text-stone-100">{company.name}</h1>
-              <p className="text-xs text-stone-500">{company.region} · Uge {company.current_week}</p>
+              <p className="text-xs text-stone-500">{ind.label} · {company.region} · Uge {company.current_week}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -71,12 +74,16 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+
+        {/* Ugeoversigt */}
         {market?.week_summary && (
           <div className="card border-l-4 border-l-brand-500">
             <p className="text-xs text-brand-400 font-medium mb-2 uppercase tracking-wide">Ugens nyheder · Uge {company.current_week}</p>
             <p className="text-stone-300 leading-relaxed">{market.week_summary}</p>
           </div>
         )}
+
+        {/* Økonomi */}
         <div>
           <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Økonomi</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -103,25 +110,36 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-        {market && (
+
+        {/* Marked – kun relevant pris */}
+        {market && relevantPrice && (
           <div>
-            <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Aktuelle priser</h2>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="stat-card">
-                <span className="stat-label">🐷 Svinekød</span>
-                <span className="stat-value">{market.pig_price} kr/kg</span>
+            <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Aktuel råvarepris</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="stat-card border-brand-500/30">
+                <span className="stat-label">{ind.emoji} {ind.animal}</span>
+                <span className="stat-value text-brand-400">{relevantPrice} kr/kg</span>
+                <span className="text-xs text-stone-600">levende vægt</span>
               </div>
               <div className="stat-card">
-                <span className="stat-label">🐄 Oksekød</span>
-                <span className="stat-value">{market.cattle_price} kr/kg</span>
+                <span className="stat-label">Efterspørgsel</span>
+                <span className={`stat-value ${market.demand_index >= 100 ? "text-green-400" : "text-red-400"}`}>
+                  {market.demand_index}
+                </span>
+                <span className="text-xs text-stone-600">indeks (100 = normal)</span>
               </div>
               <div className="stat-card">
-                <span className="stat-label">🐑 Lammekød</span>
-                <span className="stat-value">{market.lamb_price} kr/kg</span>
+                <span className="stat-label">Arbejdsmarked</span>
+                <span className="stat-value capitalize">{
+                  market.labor_market === "tight" ? "Stramt" :
+                  market.labor_market === "normal" ? "Normalt" : "Løst"
+                }</span>
               </div>
             </div>
           </div>
         )}
+
+        {/* Virksomhedsstatus */}
         <div>
           <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Virksomhed</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -153,6 +171,8 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Afslut uge */}
         <div className="card bg-stone-900 border-stone-700">
           <div className="flex items-center justify-between">
             <div>
@@ -164,6 +184,7 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
+
       </main>
     </div>
   );
