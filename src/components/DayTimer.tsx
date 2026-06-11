@@ -76,7 +76,11 @@ export default function DayTimer({
 
   async function advanceToNextDay() {
     setAdvancingDay(true);
-    await fetch("/api/advance-day", { method: "POST" });
+    await fetch("/api/advance-day", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ companyId }),
+    });
     setAdvancingDay(false);
     onDayEnd();
     router.refresh();
@@ -102,7 +106,11 @@ export default function DayTimer({
 
   async function endWeek() {
     setAdvancingDay(true);
-    await fetch("/api/advance-day", { method: "POST" });
+    await fetch("/api/advance-day", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ companyId }),
+    });
     setShowEndDayModal(false);
     setAdvancingDay(false);
     onDayEnd();
