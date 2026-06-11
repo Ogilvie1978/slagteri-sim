@@ -1,2 +1,3 @@
-alter table public.companies 
-add column industry text not null default 'svineslagteri';
+"use client";
+import { useState } from "react";
+...
