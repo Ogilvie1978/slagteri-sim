@@ -116,6 +116,37 @@ export async function POST(request: Request) {
 
   const nextDay = DAYS[nextDayNum - 1];
 
+  // Log løn transaktion
+  if (Math.round(dailyCost) > 0) {
+    await admin.from("transactions").insert({
+      company_id: company.id,
+      week_number: company.current_week,
+      day: company.current_day || "Mandag",
+      type: "salary",
+      description: `Daglig løn – ${(employees || []).length} ansatte`,
+      amount: -Math.round(dailyCost),
+      vat_amount: 0,
+    });
+  }
+
+  // Log rente transaktion
+  if (dailyInterest > 0) {
+    await admin.from("transactions").insert({
+      company_id: company.id,
+      week_number: company.current_week,
+      day: company.current_day || "Mandag",
+      type: "interest",
+      description: `Daglig rente på kassekredit (${(company.credit_rate * 100).toFixed(1)}% p.a.)`,
+      amount: -dailyInterest,
+      vat_amount: 0,
+    });
+  }
+
+  // Nulstil ugentlig revenue ved ny uge
+  const resetWeeklyFields = nextWeek > company.current_week
+    ? { current_week_revenue: 0, current_week_cogs: 0 }
+    : {};
+
   await admin.from("companies").update({
     cash: newCash,
     credit_used: newCreditUsed,
@@ -124,6 +155,9 @@ export async function POST(request: Request) {
     current_week: nextWeek,
     day_started_at: new Date().toISOString(),
     saturday_approved: saturdayApproved,
+    total_salary_paid: (company.total_salary_paid || 0) + Math.round(dailyCost),
+    total_interest_paid: (company.total_interest_paid || 0) + dailyInterest,
+    ...resetWeeklyFields,
   }).eq("id", company.id);
 
   // 6. Opret market_weeks for næste uge hvis det er en ny uge
