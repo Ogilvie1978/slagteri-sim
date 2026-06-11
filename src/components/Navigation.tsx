@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { href: "/purchase",    label: "Indkøb",      emoji: "🐄" },
   { href: "/production",  label: "Produktion",  emoji: "⚙️" },
   { href: "/hr",          label: "Personale",   emoji: "👔" },
+  { href: "/sales",       label: "Salg",        emoji: "💰" },
 ];
 
 export default function Navigation() {
