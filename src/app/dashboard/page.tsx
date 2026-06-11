@@ -117,6 +117,26 @@ export default function DashboardPage() {
           onDayEnd={load}
         />
 
+        {/* Setup banner – første dag */}
+        {!company.is_operational && (
+          <div className="card border-l-4 border-l-red-500 bg-red-950/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-red-400 font-medium text-sm">Slagteriet er ikke klar til drift</p>
+                <p className="text-stone-400 text-sm mt-0.5">
+                  Ansæt mindst 5 slagtere, 1 tekniker og 1 QA medarbejder for at starte produktion.
+                </p>
+              </div>
+              <button
+                onClick={() => router.push("/hr")}
+                className="btn-primary ml-4 whitespace-nowrap"
+              >
+                👔 Ansæt personale
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Søndag besked */}
         {isSunday && (
           <div className="card border-l-4 border-l-stone-600 bg-stone-900/50">
