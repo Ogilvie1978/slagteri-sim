@@ -38,6 +38,9 @@ export type Company = {
   week_day_number: number;
   day_started_at: string;
   saturday_approved: boolean;
+  // Setup
+  is_operational: boolean;
+  setup_completed_day: string | null;
   created_at: string;
 };
 
