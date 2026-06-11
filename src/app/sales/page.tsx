@@ -229,7 +229,7 @@ export default function SalesPage() {
 
         {/* SLAGTEKROPPE */}
         {activeTab === "quarter" && (
-          <div className="space-y-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {Object.keys(groupedCold).length === 0 && (
               <div className="card border-dashed border-stone-700 text-center py-12">
                 <p className="text-stone-500">Ingen slagtekroppe klar til salg</p>
@@ -243,24 +243,17 @@ export default function SalesPage() {
               const wrongClass = buyer?.accepted_classes?.length && !buyer.accepted_classes.includes(group.seurop_class);
               return (
                 <div key={key} onClick={() => selectGroup(group.items.map(i => i.id))}
-                  className={`card cursor-pointer transition-all ${allSel ? "border-brand-500 bg-stone-800/50" : "hover:border-stone-600"} ${wrongClass ? "border-l-4 border-l-red-700" : ""}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${allSel ? "bg-brand-500 border-brand-500" : "border-stone-600"}`}>
-                        {allSel && <span className="text-white text-xs">✓</span>}
-                      </div>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded border ${SEUROP_COLORS[group.seurop_class]}`}>{group.seurop_class}</span>
-                      <div>
-                        <span className="text-stone-100 text-sm font-medium">{ANIMAL_LABELS[group.animal_category]}</span>
-                        <span className="text-stone-500 text-xs ml-2">{group.items.length} kroppe · {Math.round(group.totalKg)} kg</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-brand-400 font-medium">{formatDKK(val)}</p>
-                      <p className="text-stone-500 text-xs">{price.toFixed(2)} kr/kg</p>
-                      {wrongClass && <p className="text-red-400 text-xs">Omdømme -5</p>}
+                  className={`card cursor-pointer transition-all p-3 ${allSel ? "border-brand-500 bg-stone-800/50" : "hover:border-stone-600"} ${wrongClass ? "border-red-800" : ""}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${SEUROP_COLORS[group.seurop_class]}`}>{group.seurop_class}</span>
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${allSel ? "bg-brand-500 border-brand-500" : "border-stone-600"}`}>
+                      {allSel && <span className="text-white text-xs leading-none">✓</span>}
                     </div>
                   </div>
+                  <p className="text-stone-100 text-sm font-medium leading-tight">{ANIMAL_LABELS[group.animal_category]}</p>
+                  <p className="text-stone-500 text-xs mt-0.5">{group.items.length} kroppe · {Math.round(group.totalKg)} kg</p>
+                  <p className="text-brand-400 font-medium text-sm mt-1">{formatDKK(val)}</p>
+                  {wrongClass && <p className="text-red-400 text-xs">Omdømme -5</p>}
                 </div>
               );
             })}
@@ -283,33 +276,26 @@ export default function SalesPage() {
                   <h3 className="text-xs font-medium text-stone-500 uppercase tracking-wide mb-2">
                     {cat === "premium" ? "⭐ Premium" : cat === "standard" ? "🛒 Standard" : "🏭 Industri"}
                   </h3>
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {entries.map(([key, group]) => {
                       const allSel = group.items.every(i => selectedIds.includes(i.id));
                       const price = group.base_price_dkk_per_kg * (1 + group.maturation_bonus_pct / 100) * (group.is_vacuum_packed ? 1.2 : 1) * (1 + priceBonus / 100);
                       const val = Math.round(group.totalKg * price);
                       return (
                         <div key={key} onClick={() => selectGroup(group.items.map(i => i.id))}
-                          className={`card cursor-pointer transition-all ${allSel ? "border-brand-500 bg-stone-800/50" : "hover:border-stone-600"}`}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${allSel ? "bg-brand-500 border-brand-500" : "border-stone-600"}`}>
-                                {allSel && <span className="text-white text-xs">✓</span>}
-                              </div>
-                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${SEUROP_COLORS[group.seurop_class]}`}>{group.seurop_class}</span>
-                              <div>
-                                <span className="text-stone-100 text-sm font-medium">{group.cut_name}</span>
-                                <span className="text-stone-500 text-xs ml-2">{group.totalKg.toFixed(1)} kg</span>
-                              </div>
+                          className={`card cursor-pointer transition-all p-3 ${allSel ? "border-brand-500 bg-stone-800/50" : "hover:border-stone-600"}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${SEUROP_COLORS[group.seurop_class]}`}>{group.seurop_class}</span>
+                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${allSel ? "bg-brand-500 border-brand-500" : "border-stone-600"}`}>
+                              {allSel && <span className="text-white text-xs leading-none">✓</span>}
                             </div>
-                            <div className="flex items-center gap-3">
-                              {group.maturation_bonus_pct > 0 && <span className="badge-yellow">+{group.maturation_bonus_pct}%</span>}
-                              {group.is_vacuum_packed && <span className="badge-blue">Vakuum</span>}
-                              <div className="text-right">
-                                <p className="text-brand-400 font-medium">{formatDKK(val)}</p>
-                                <p className="text-stone-500 text-xs">{price.toFixed(2)} kr/kg</p>
-                              </div>
-                            </div>
+                          </div>
+                          <p className="text-stone-100 text-sm font-medium leading-tight">{group.cut_name}</p>
+                          <p className="text-stone-500 text-xs mt-0.5">{group.totalKg.toFixed(1)} kg</p>
+                          <p className="text-brand-400 font-medium text-sm mt-1">{formatDKK(val)}</p>
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                            {group.maturation_bonus_pct > 0 && <span className="badge-yellow text-xs">+{group.maturation_bonus_pct}%</span>}
+                            {group.is_vacuum_packed && <span className="badge-blue text-xs">Vakuum</span>}
                           </div>
                         </div>
                       );
