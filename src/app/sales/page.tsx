@@ -145,23 +145,50 @@ export default function SalesPage() {
     setSelling(true);
     let cashGain = 0;
     let repLoss = 0;
+    const VAT_RATE = 0.25;
 
     for (const item of selCold) {
       const price = BASE_PRICE * (1 + item.maturation_bonus_pct / 100) * (1 + priceBonus / 100);
-      cashGain += Math.round(item.carcass_weight_kg * price);
+      const revenue = Math.round(item.carcass_weight_kg * price);
+      cashGain += revenue;
       if (buyer?.accepted_classes?.length && !buyer.accepted_classes.includes(item.seurop_class)) repLoss -= 5;
       await supabase.from("cold_storage").update({ status: "sold_quarter" }).eq("id", item.id);
+      // Log transaktion
+      await supabase.from("transactions").insert({
+        company_id: company.id,
+        week_number: company.current_week,
+        day: company.current_day || "Mandag",
+        type: "sale",
+        description: `${ANIMAL_LABELS[item.animal_category]} krop (${item.seurop_class}) → ${buyer?.name || "NordSlagt"}`,
+        amount: revenue,
+        vat_amount: Math.round(revenue * VAT_RATE),
+      });
     }
 
     for (const item of selCuts) {
       const price = item.base_price_dkk_per_kg * (1 + item.maturation_bonus_pct / 100) * (item.is_vacuum_packed ? 1.2 : 1) * (1 + priceBonus / 100);
-      cashGain += Math.round(item.weight_kg * price);
+      const revenue = Math.round(item.weight_kg * price);
+      cashGain += revenue;
       await supabase.from("butchered_cuts").update({ status: "sold" }).eq("id", item.id);
+      await supabase.from("transactions").insert({
+        company_id: company.id,
+        week_number: company.current_week,
+        day: company.current_day || "Mandag",
+        type: "sale",
+        description: `${item.cut_name} (${item.seurop_class}) → ${buyer?.name || "NordSlagt"}`,
+        amount: revenue,
+        vat_amount: Math.round(revenue * VAT_RATE),
+      });
     }
 
+    const vatCollected = Math.round(cashGain * VAT_RATE);
     await supabase.from("companies").update({
       cash: company.cash + cashGain,
       reputation: Math.max(0, company.reputation + repLoss),
+      total_revenue: (company as any).total_revenue + cashGain,
+      current_week_revenue: (company as any).current_week_revenue + cashGain,
+      vat_collected: (company as any).vat_collected + vatCollected,
+      vat_due: (company as any).vat_due + vatCollected,
     }).eq("id", company.id);
 
     setSelectedIds([]);
