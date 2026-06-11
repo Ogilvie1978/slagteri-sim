@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import Navigation from "@/components/Navigation";
 import { formatDKK } from "@/lib/utils";
 import type { Company } from "@/lib/types";
 
@@ -167,6 +168,7 @@ export default function HRPage() {
 
   return (
     <div className="min-h-screen bg-stone-950">
+      <Navigation />
       <header className="border-b border-stone-800 bg-stone-900/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
