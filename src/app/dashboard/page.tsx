@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatDKK } from "@/lib/utils";
 import type { Company, MarketWeek } from "@/lib/types";
 import { INDUSTRY_CONFIG } from "@/lib/types";
+import EndWeekButton from "@/components/EndWeekButton";
 
 type AnimalPrice = {
   category: string;
@@ -30,6 +31,7 @@ export default function DashboardPage() {
   const [market, setMarket] = useState<MarketWeek | null>(null);
   const [prices, setPrices] = useState<AnimalPrice[]>([]);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
+  const [hasPurchased, setHasPurchased] = useState(false);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const supabase = createClient();
@@ -44,32 +46,22 @@ export default function DashboardPage() {
         .select("*")
         .eq("player_id", user.id)
         .single();
-
       if (!co) { router.push("/onboarding"); return; }
       setCompany(co);
 
-      const { data: mw } = await supabase
-        .from("market_weeks")
-        .select("*")
-        .eq("week_number", co.current_week)
-        .single();
-      setMarket(mw);
+      const [mwRes, apRes, buyerRes, purchaseRes] = await Promise.all([
+        supabase.from("market_weeks").select("*").eq("week_number", co.current_week).single(),
+        supabase.from("animal_prices").select("category, category_label, best_use, price_dkk_per_kg")
+          .eq("week_number", co.current_week).eq("industry", co.industry).order("price_dkk_per_kg", { ascending: false }),
+        supabase.from("buyers").select("*").eq("active", true).order("type"),
+        supabase.from("raw_material_purchases").select("id").eq("company_id", co.id)
+          .eq("week_number", co.current_week).eq("is_weekend", false).limit(1),
+      ]);
 
-      const { data: ap } = await supabase
-        .from("animal_prices")
-        .select("category, category_label, best_use, price_dkk_per_kg")
-        .eq("week_number", co.current_week)
-        .eq("industry", co.industry)
-        .order("price_dkk_per_kg", { ascending: false });
-      setPrices(ap || []);
-
-      const { data: buyerData } = await supabase
-        .from("buyers")
-        .select("*")
-        .eq("active", true)
-        .order("type");
-      setBuyers(buyerData || []);
-
+      setMarket(mwRes.data);
+      setPrices(apRes.data || []);
+      setBuyers(buyerRes.data || []);
+      setHasPurchased((purchaseRes.data || []).length > 0);
       setLoading(false);
     }
     load();
@@ -86,11 +78,7 @@ export default function DashboardPage() {
   const ind = INDUSTRY_CONFIG[company.industry] ?? INDUSTRY_CONFIG["kreaturslagteri"];
   const liquidityTotal = company.cash + (company.credit_limit - company.credit_used);
   const weeklyInterest = Math.floor(company.credit_used * company.credit_rate / 52);
-
-  const availableBuyers = buyers.filter(b =>
-    b.type === "guaranteed" ||
-    company.compliance_score >= b.min_compliance
-  );
+  const availableBuyers = buyers.filter(b => b.type === "guaranteed" || company.compliance_score >= b.min_compliance);
 
   return (
     <div className="min-h-screen bg-stone-950">
@@ -115,7 +103,6 @@ export default function DashboardPage() {
 
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
 
-        {/* Ugeoversigt */}
         {market?.week_summary && (
           <div className="card border-l-4 border-l-brand-500">
             <p className="text-xs text-brand-400 font-medium mb-2 uppercase tracking-wide">Ugens nyheder · Uge {company.current_week}</p>
@@ -123,7 +110,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Økonomi */}
         <div>
           <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Økonomi</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -151,15 +137,23 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Råvarepriser */}
         {prices.length > 0 && (
           <div>
-            <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
-              Aktuelle råvarepriser · {ind.label}
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide">
+                Aktuelle råvarepriser · {ind.label}
+              </h2>
+              <button
+                onClick={() => router.push("/purchase")}
+                className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
+              >
+                Gå til indkøb →
+              </button>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {prices.map(p => (
-                <div key={p.category} className="stat-card">
+                <div key={p.category} className="stat-card cursor-pointer hover:border-stone-600 transition-colors"
+                  onClick={() => router.push("/purchase")}>
                   <span className="stat-label">{p.category_label}</span>
                   <span className="stat-value text-brand-400">{p.price_dkk_per_kg} kr/kg</span>
                   <span className="text-xs text-stone-600">{p.best_use}</span>
@@ -169,43 +163,32 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Markedsforhold */}
         {market && (
           <div>
             <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Markedsforhold</h2>
             <div className="grid grid-cols-3 gap-3">
               <div className="stat-card">
                 <span className="stat-label">Efterspørgsel</span>
-                <span className={`stat-value ${market.demand_index >= 100 ? "text-green-400" : "text-red-400"}`}>
-                  {market.demand_index}
-                </span>
+                <span className={`stat-value ${market.demand_index >= 100 ? "text-green-400" : "text-red-400"}`}>{market.demand_index}</span>
                 <span className="text-xs text-stone-600">indeks (100 = normal)</span>
               </div>
               <div className="stat-card">
                 <span className="stat-label">Arbejdsmarked</span>
-                <span className="stat-value">{
-                  market.labor_market === "tight" ? "Stramt" :
-                  market.labor_market === "normal" ? "Normalt" : "Løst"
-                }</span>
+                <span className="stat-value">{market.labor_market === "tight" ? "Stramt" : market.labor_market === "normal" ? "Normalt" : "Løst"}</span>
               </div>
               <div className="stat-card">
                 <span className="stat-label">Brændstof</span>
-                <span className={`stat-value ${market.fuel_cost_index > 100 ? "text-red-400" : "text-green-400"}`}>
-                  {market.fuel_cost_index}
-                </span>
+                <span className={`stat-value ${market.fuel_cost_index > 100 ? "text-red-400" : "text-green-400"}`}>{market.fuel_cost_index}</span>
                 <span className="text-xs text-stone-600">indeks</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* Tilgængelige købere */}
         <div>
           <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">
             Tilgængelige købere
-            <span className="ml-2 text-stone-600 normal-case font-normal">
-              ({availableBuyers.length} af {buyers.length})
-            </span>
+            <span className="ml-2 text-stone-600 normal-case font-normal">({availableBuyers.length} af {buyers.length})</span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {availableBuyers.map(b => (
@@ -214,31 +197,22 @@ export default function DashboardPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-stone-100 text-sm">{b.name}</span>
-                    {b.price_bonus_pct > 0 && (
-                      <span className="badge-green">+{b.price_bonus_pct}%</span>
-                    )}
-                    {b.type === "guaranteed" && (
-                      <span className="badge-blue">Garanteret aftager</span>
-                    )}
+                    {b.price_bonus_pct > 0 && <span className="badge-green">+{b.price_bonus_pct}%</span>}
+                    {b.type === "guaranteed" && <span className="badge-blue">Garanteret aftager</span>}
                   </div>
                   <p className="text-xs text-stone-500 mt-0.5">{b.description}</p>
                   {b.min_volume_kg > 0 && (
-                    <p className="text-xs text-stone-600 mt-1">
-                      Min. {b.min_volume_kg.toLocaleString("da-DK")} kg/uge · Compliance {b.min_compliance}+
-                    </p>
+                    <p className="text-xs text-stone-600 mt-1">Min. {b.min_volume_kg.toLocaleString("da-DK")} kg/uge · Compliance {b.min_compliance}+</p>
                   )}
                 </div>
               </div>
             ))}
           </div>
           {buyers.length > availableBuyers.length && (
-            <p className="text-xs text-stone-600 mt-2">
-              {buyers.length - availableBuyers.length} købere kræver højere compliance score for at blive låst op.
-            </p>
+            <p className="text-xs text-stone-600 mt-2">{buyers.length - availableBuyers.length} købere kræver højere compliance score.</p>
           )}
         </div>
 
-        {/* Virksomhedsstatus */}
         <div>
           <h2 className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-3">Virksomhed</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -271,16 +245,17 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Afslut uge */}
         <div className="card bg-stone-900 border-stone-700">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-stone-100">Klar til næste uge?</h3>
-              <p className="text-sm text-stone-500 mt-0.5">Afslut uge {company.current_week} og se hvad der sker</p>
+              <p className="text-sm text-stone-500 mt-0.5">
+                {hasPurchased
+                  ? "Dyr er købt til mandag ✓"
+                  : "Du har ikke købt dyr denne uge"}
+              </p>
             </div>
-            <button className="btn-primary">
-              Afslut uge {company.current_week} →
-            </button>
+            <EndWeekButton company={company} hasPurchasedThisWeek={hasPurchased} />
           </div>
         </div>
 
