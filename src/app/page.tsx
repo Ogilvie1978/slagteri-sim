@@ -1,20 +1,30 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+import { useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 
-export default async function Home() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+export default function Home() {
+  const router = useRouter();
+  const supabase = createClient();
 
-  if (!user) redirect("/login");
+  useEffect(() => {
+    async function check() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push("/login"); return; }
+      const { data: company } = await supabase
+        .from("companies")
+        .select("id")
+        .eq("player_id", user.id)
+        .single();
+      if (!company) { router.push("/onboarding"); return; }
+      router.push("/dashboard");
+    }
+    check();
+  }, []);
 
-  // Tjek om spilleren har en virksomhed
-  const { data: company } = await supabase
-    .from("companies")
-    .select("id")
-    .eq("player_id", user.id)
-    .single();
-
-  if (!company) redirect("/onboarding");
-
-  redirect("/dashboard");
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <p className="text-stone-500">Indlæser...</p>
+    </div>
+  );
 }
